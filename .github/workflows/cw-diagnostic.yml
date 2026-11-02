@@ -1,4 +1,4 @@
-name: CW diagnostic IPK
+name: CW final IPK
 
 # A push on the investigation branch builds an installable Nightly artifact without
 # a workflow-dispatch API call or a public release. Reuse the repository's ARM,
@@ -33,7 +33,7 @@ jobs:
       flavor: nightly
       nightly-date: ${{ needs.date.outputs.value }}
       telemetry: development
-      artifact: cw-diagnostic-ipk
+      artifact: cw-final-ipk
       source-asset: true
       fwcompat: true
       homebrew-manifest: true

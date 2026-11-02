@@ -1072,14 +1072,6 @@ impl HomeScreen {
                 && !self.rows.iter().any(|row| row.group.0 == *group)
         });
         self.projected_generation = Some(view.generation);
-        if let Some(row) = self.rows.iter().position(|r| r.identity == HomeHubIdentity::ContinueWatching) {
-            let hub = view.hub(row);
-            plx_base::eventlog::log(&format!(
-                "cwdiag: project entry={} gen={} row={row} count={} offset={} scroll={:.1} focus={:?}",
-                self.entry.0, view.generation, self.rows[row].elems.len(),
-                hub.map_or(0, |hub| hub.offset), self.grid.shelves[row].scroll(),
-                self.focused_grid(cx.focus.current)));
-        }
         self.stash_removed_continue_watching(view);
         self.prune_keys(&removed, view.generation, cx.focus.current.map(|key| key.elem), &cx.focus.remembered);
         self.reconcile_carousel(view);
@@ -1592,15 +1584,7 @@ impl HomeScreen {
                 r == row && col.saturating_add(ui_cards::PAGE_EDGE_CARDS) >= self.rows[row].elems.len());
             // The shelf skips a row at exact rest with nothing focused, and parks one that has
             // settled once focus left it.
-            let scroll_before = shelf.scroll();
             let want = shelf.on(&ScreenEvent::Tick(t), cx, &src, fx);
-            if self.rows[row].identity == HomeHubIdentity::ContinueWatching
-                && (shelf.landed().is_some() || (scroll_before == 0.0 && shelf.scroll() > 0.0))
-            {
-                plx_base::eventlog::log(&format!(
-                    "cwdiag: motion gen={} focus={focused:?} scroll={scroll_before:.1}->{:.1} landed={:?}",
-                    view.generation, shelf.scroll(), shelf.landed().map(|l| (l.from, l.to))));
-            }
             let offset = self.hub(view, row).map_or(0, |hub| hub.offset);
             let wanted = matches!(want, Some(ui_cards::CardEvent::Want(_)));
             if shelf.page_cancel(cx, &src, offset, visible).is_some() {
@@ -3080,12 +3064,7 @@ impl<H: HomeLike> Machine<H> for HomeScreen {
                     });
                     if let (Some(row), Some(n)) = (under, under.and_then(|row| self.rows.get(row)).map(|hub| hub.elems.len())) {
                         if let Some(shelf) = self.grid.shelves.get_mut(row) {
-                            let before = shelf.scroll();
                             shelf.glide(*dx, n);
-                            if self.rows[row].identity == HomeHubIdentity::ContinueWatching && shelf.scroll() != before {
-                                plx_base::eventlog::log(&format!(
-                                    "cwdiag: pan dx={dx:.1} scroll={before:.1}->{:.1}", shelf.scroll()));
-                            }
                             fx.invalidate(Provenance::Input);
                         }
                     }
@@ -3159,14 +3138,6 @@ impl<H: HomeLike> Machine<H> for HomeScreen {
                 Handled::Yes
             }
             ScreenEvent::FocusMoved { from, to, by } => {
-                let old = self.focused_grid(*from);
-                let new = self.focused_grid(Some(*to));
-                if old.into_iter().chain(new).any(|(row, _)|
-                    self.rows[row].identity == HomeHubIdentity::ContinueWatching)
-                {
-                    plx_base::eventlog::log(&format!(
-                        "cwdiag: focus entry={} by={by:?} from={old:?} to={new:?}", self.entry.0));
-                }
                 if let Some((row, _)) = self.focused_grid(*from) {
                     if self.focused_grid(Some(*to)).is_none_or(|(next, _)| next != row) {
                         self.cancel_row_page(row, cx, fx);

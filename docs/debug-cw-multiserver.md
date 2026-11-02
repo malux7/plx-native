@@ -2,9 +2,9 @@
 
 Investigation sur `fix-cw-multiserver`, base propre
 `72de84aabf9c7d7d95bad388e58b7e2e96490424`. Aucun ancien correctif de focus ou de
-scroll n'est repris. Le défaut de données ci-dessous est reproduit sur hôte ;
-son rôle dans le décalage observé sur LG OLED65G1 / webOS 6.5 reste à confirmer
-avec ce build sur la TV.
+scroll n'est repris. Le défaut de données ci-dessous est reproduit sur hôte.
+L'utilisateur a ensuite confirmé la disparition du décalage sur sa LG OLED65G1
+sous webOS 6.5, avec trois serveurs Plex et après fermeture complète puis réouverture.
 
 ## Deux positions différentes
 
@@ -85,12 +85,33 @@ ne demande pas ces pages. Le redémarrage refait arriver les serveurs et peut
 recréer la mauvaise fenêtre. Ce mécanisme ne prouve pas à lui seul que le scroll
 en pixels de la TV n'a aucun autre défaut.
 
-## Validation sur la TV
+## Résultat de la validation TV
 
-Ce commit contient des traces `cwdiag:` actives aussi dans une compilation
-Nightly `RELEASE=1`, sans trigger. Elles ne changent aucun choix de focus et ne
-contiennent ni adresse, ni titre, ni compte, ni jeton. Elles sont destinées à
-cette investigation ; les enlever après confirmation avant une intégration finale.
+Le build instrumenté `0d0e4c13` a été construit par le
+[run GitHub Actions 41506047988](https://github.com/malux7/plx-native/actions/runs/41506047988),
+terminé avec succès (compilation ARM, paquet et contrôles du pipeline réutilisé).
+L'utilisateur confirme que le problème ne revient plus après fermeture complète
+et réouverture de l'application.
+
+Les journaux fournis montrent les réponses successives des sources 1, 2 puis 0 :
+la fenêtre fusionnée reste à sa tête (`before=false`, toutes les bornes `lo=0`).
+Home publie ensuite `count=24 offset=0 scroll=0.0 focus=None`. Le premier mouvement
+directionnel place le focus sur `(0, 0)` et les rafraîchissements ultérieurs
+conservent l'offset et le scroll à zéro, sans déplacement `cwdiag: motion`.
+La confirmation des fermetures et réouvertures vient du test manuel de
+l'utilisateur ; une copie répétée du même journal ne compte pas comme un autre boot.
+
+Les traces temporaires `cwdiag:` ont été retirées après cette confirmation.
+Le correctif et les trois tests de régression sont conservés. Aucun journal privé
+de la TV n'est ajouté au dépôt.
+
+## Protocole utilisé avec le build instrumenté
+
+Le build `0d0e4c13` contenait des traces `cwdiag:` actives aussi dans une compilation
+Nightly `RELEASE=1`, sans trigger. Elles ne changeaient aucun choix de focus et ne
+contenaient ni adresse, ni titre, ni compte, ni jeton. Les instructions de collecte
+ci-dessous documentent cette investigation ; une nouvelle compilation de la
+branche nettoyée n'émet plus ces traces.
 
 Pour construire depuis le workflow upstream : Actions → **Nightly** → **Run
 workflow**, sélectionner `fix-cw-multiserver` et cocher **dry_run**. Ce mode est
