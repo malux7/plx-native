@@ -102,8 +102,11 @@ La confirmation des fermetures et réouvertures vient du test manuel de
 l'utilisateur ; une copie répétée du même journal ne compte pas comme un autre boot.
 
 Les traces temporaires `cwdiag:` ont été retirées après cette confirmation.
-Le correctif et les trois tests de régression sont conservés. Aucun journal privé
-de la TV n'est ajouté au dépôt.
+Le build final sans instrumentation (`81d51568`) a ensuite passé le
+[pipeline ARM 41512911790](https://github.com/malux7/plx-native/actions/runs/41512911790)
+en 17 min 16 s ; l'IPK est dans l'artefact `cw-final-ipk`. Le workflow ponctuel
+a été retiré après ce build. Le correctif et les trois tests de régression sont
+conservés. Aucun journal privé de la TV n'est ajouté au dépôt.
 
 ## Protocole utilisé avec le build instrumenté
 
