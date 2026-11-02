@@ -1324,6 +1324,18 @@ fn settle_deck(srcs: &mut [Src], refreshed: bool) {
     let refs: Vec<&[CwItem]> = previews.iter().map(Vec::as_slice).collect();
     deck::place(&mut lanes, &refs);
     if refreshed { deck::fit(&mut lanes); }
+    // Diagnostic branch: distinguish a paged data window from Home's pixel scroll. No server
+    // addresses, account handles, titles or tokens are recorded, and this runs only on a settle.
+    let refs: Vec<&deck::Lane> = lanes.iter().collect();
+    let (cards, before, after) = deck::merge_deck(&refs);
+    plx_base::eventlog::log(&format!(
+        "cwdiag: settle refreshed={refreshed} sources={} shown={} before={before} after={after}",
+        lanes.len(), cards.len()));
+    for (&source, lane) in idx.iter().zip(&lanes) {
+        plx_base::eventlog::log(&format!(
+            "cwdiag: lane sid={} lo={} hi={} held={} head={} done={}",
+            srcs[source].sid.raw(), lane.lo, lane.hi, lane.rows.len(), lane.head.position, lane.done));
+    }
     put_lanes(srcs, &idx, lanes);
 }
 

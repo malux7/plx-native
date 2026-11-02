@@ -116,6 +116,30 @@ fn move_deck(owner: &mut Owner, listings: &[&Listing], before: bool, fail: Optio
 }
 
 #[test]
+fn a_late_source_publishes_the_head_not_a_window_after_the_newest_cards() {
+    let _guard = plx_base::testlock::serial();
+    let older = Listing::new(0, [30, 20, 10].into_iter());
+    let newer = Listing::new(1, [60, 50, 40].into_iter());
+    let mut owner = deck_owner(&[&older]);
+    let slot = plx_plex::plex::register_for_test("deck-1", "127.0.0.1", 10, "synthetic", "fixture").raw();
+    let mut sources = std::mem::take(&mut owner.state.srcs);
+    sources.push(newer.source(slot));
+    // Each source landing runs this path before Home receives the publication.
+    settle_deck(&mut sources, true);
+    seed(&mut owner.state, sources);
+    let want = expected(&[&older, &newer]);
+    assert_eq!(rks(&owner.state, 0), want);
+    assert_eq!(hubs(&owner.state)[0].offset, 0,
+        "the UI must receive the actual head even when its local scroll is already zero");
+    // An idle settle must not move a manually returned head on a later tick.
+    let mut sources = std::mem::take(&mut owner.state.srcs);
+    settle_deck(&mut sources, false);
+    seed(&mut owner.state, sources);
+    assert_eq!(rks(&owner.state, 0), want);
+    plx_plex::plex::reset_servers_for_test();
+}
+
+#[test]
 fn the_row_reaches_every_in_progress_item_of_every_server_and_comes_back() {
     let _guard = plx_base::testlock::serial();
     let a = Listing::new(0, (0..40).map(|i| 9000 - i * 20));

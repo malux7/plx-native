@@ -224,9 +224,14 @@ fn shown_count(lanes: &[Lane]) -> usize { lanes.iter().map(|lane| lane.shown().c
 
 /// Puts the deck on every lane that has not got it yet. The preview is the lane's rows. With no lane
 /// placed yet the deck is the first [`MAX_SHELF_ITEMS`] cards in merged order (what the merge of the
-/// previews showed before any ask); a lane that joins a deck already placed shows the rows that fall
-/// inside the window's span and holds the rest as lookahead or as rows behind.
+/// previews showed before any ask). A lane joining a deck still at its head rebuilds that head;
+/// only a deck that has moved keeps its span and holds the rest as lookahead or as rows behind.
 pub(crate) fn place(lanes: &mut [Lane], previews: &[&[CwItem]]) {
+    // Placement is also used for independently arriving startup responses. Being placed does not
+    // mean the reader paged: anchoring a late source to the first response's time span can hide
+    // all of its newer cards, and dropping an overfull span from the front skips the merged head.
+    let at_head = lanes.iter().filter(|lane| lane.placed)
+        .all(|lane| lane.lo == 0 && !lane.has_before());
     let mut fresh = Vec::new();
     for (i, (lane, preview)) in lanes.iter_mut().zip(previews).enumerate() {
         if lane.placed { continue; }
@@ -251,7 +256,8 @@ pub(crate) fn place(lanes: &mut [Lane], previews: &[&[CwItem]]) {
         fresh.push(i);
     }
     if fresh.is_empty() { return; }
-    if fresh.len() == lanes.len() {
+    if at_head {
+        for lane in lanes.iter_mut() { (lane.lo, lane.hi) = (0, 0); }
         take(lanes, true, MAX_SHELF_ITEMS, &vec![true; lanes.len()]);
         return;
     }
@@ -888,6 +894,37 @@ mod tests {
         assert_eq!(keys(&fresh), before, "the window did not snap back to the head");
         let moved = fresh[0].shown().find(|row| row.m.rk == progressed).unwrap();
         assert_eq!(moved.m.resume_ms, 4242);
+    }
+
+    #[test]
+    fn a_late_source_keeps_an_unmoved_deck_at_the_merged_head() {
+        let older = Server::new(1, &[30, 20, 10]);
+        let newer = Server::new(2, &[60, 50, 40]);
+        let together = deck(&[&older, &newer]);
+        let mut staggered = deck(&[&older]);
+        staggered.push(newer.lane());
+        place(&mut staggered, &[&[], &[]]);
+
+        assert_eq!(keys(&staggered), keys(&together),
+            "startup order must not hide the newer server's cards before the window");
+        assert!(!merge_deck(&staggered.iter().collect::<Vec<_>>()).1,
+            "no left page exists when nobody has paged away from the head");
+    }
+
+    #[test]
+    fn a_late_source_keeps_the_newest_cards_when_the_head_exceeds_the_bound() {
+        let older = Server::new(1, &viewed(MAX_SHELF_ITEMS, 10, 5000));
+        let newer = Server::new(2, &viewed(MAX_SHELF_ITEMS, 10, 5005));
+        let together = deck(&[&older, &newer]);
+        for (first, second) in [(&older, &newer), (&newer, &older)] {
+            let mut staggered = deck(&[first]);
+            staggered.push(second.lane());
+            place(&mut staggered, &[&[], &[]]);
+            assert_eq!(keys(&staggered), keys(&together),
+                "a late source must not turn startup into a forward page");
+            assert_eq!(keys(&staggered).len(), MAX_SHELF_ITEMS);
+            assert!(!merge_deck(&staggered.iter().collect::<Vec<_>>()).1);
+        }
     }
 
     #[test]
