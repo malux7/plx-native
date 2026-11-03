@@ -2247,7 +2247,8 @@ fn back_from_grid_folds_to_hero_then_home_pill_before_root_back() {
         elem: HERO_PLAY_ELEM,
     };
     let (_, bar, _) = step(&mut s, snapshot.view(), Some(hero), &back);
-    assert_eq!(enter_target(&bar), Some(FocusTarget::Elem(FocusKey { entry: s.entry, elem: STRIP_HOME_ELEM })));
+    assert!(matches!(enter_target(&bar), Some(FocusTarget::Elem(key))
+        if key == FocusKey { entry: s.entry, elem: STRIP_HOME_ELEM }));
     assert!(!bar.iter().any(|stamped| matches!(&stamped.fx, Fx::App(AppFx::Loop(LoopReq::BackAtRoot)))));
     let home = FocusKey { entry: s.entry, elem: STRIP_HOME_ELEM };
     let (_, root, _) = step(&mut s, snapshot.view(), Some(home), &back);
