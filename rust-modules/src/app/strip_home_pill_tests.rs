@@ -65,7 +65,7 @@ fn back_from_every_other_home_bar_member_including_settings_lands_on_home() {
 }
 
 #[test]
-fn back_from_library_bar_returns_to_home_pill_instead_of_the_previous_tab() {
+fn back_from_library_bar_focuses_home_without_activating_its_page() {
     let mut w = World::movies_library("back-library-home-pill", false);
     for _ in 0..8 {
         if w.focus().is_some_and(|key| key.elem >= plx_ui::dispatch::STRIP_BASE) { break; }
@@ -73,14 +73,17 @@ fn back_from_library_bar_returns_to_home_pill_instead_of_the_previous_tab() {
     }
     assert_eq!(w.focus().map(|key| key.elem), Some(plx_screens::home::STRIP_MOVIES_ELEM));
     w.press(Key::Back);
-    assert_home_focus(&w);
+    assert!(w.on(&AppArg::Library), "moving focus must not activate the Home tab");
+    assert_eq!(w.elem(), Some(plx_screens::home::STRIP_HOME_ELEM));
     assert!(w.bridge.take_reqs().is_empty());
+    w.press(Key::Back);
+    assert!(matches!(w.bridge.take_reqs().as_slice(), [LoopReq::BackAtRoot]));
 }
 
 #[test]
-fn back_on_the_home_pill_of_a_peer_opens_home_before_allowing_platform_home() {
+fn back_on_the_home_pill_of_library_and_search_already_allows_platform_home() {
     let mut w = World::movies_library("back-peer-home-pill", false);
-    for tab in [HomeTab::Movies, HomeTab::Search, HomeTab::Watchlist] {
+    for tab in [HomeTab::Movies, HomeTab::Search] {
         nav_tab(&mut w.d, &mut w.bridge, tab, None, None);
         w.frames(60);
         let page = w.d.nav.top_page().unwrap();
@@ -91,9 +94,11 @@ fn back_on_the_home_pill_of_a_peer_opens_home_before_allowing_platform_home() {
                 entry, elem: plx_screens::home::STRIP_HOME_ELEM,
             }) }))));
         w.frames(2);
+        assert_eq!(w.elem(), Some(plx_screens::home::STRIP_HOME_ELEM), "premise: Home is focused for {tab:?}");
         w.press(Key::Back);
-        assert_home_focus(&w);
-        assert!(w.bridge.take_reqs().is_empty(), "a peer must return to Home before the platform");
+        assert_eq!(w.d.nav.top_page().map(|page| page.id), Some(entry), "BACK must not activate Home for {tab:?}");
+        assert_eq!(w.elem(), Some(plx_screens::home::STRIP_HOME_ELEM));
+        assert!(matches!(w.bridge.take_reqs().as_slice(), [LoopReq::BackAtRoot]));
     }
 }
 

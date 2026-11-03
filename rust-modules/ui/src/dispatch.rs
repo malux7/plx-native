@@ -217,6 +217,12 @@ pub const ADAPTER_RANKS: [&str; 11] = [
     "poster",
 ];
 
+/// The application's BACK policy for a focused member of the shared navigation bar.
+pub enum StripBack<K> {
+    Focus(K),
+    Root,
+}
+
 /// What the dispatcher borrows from the application for one frame. `split` hands out the
 /// mounter, the views and the measure at once so a mount can read the stores it was built over.
 pub trait Rig<H: Host> {
@@ -280,9 +286,9 @@ pub trait Rig<H: Host> {
     /// on the television (`root_back_tests`); nothing, by default, in a fixture.
     fn back_at_root(&mut self) {}
     /// BACK on a member of the shared bar, before the underlying page sees it. The application
-    /// may choose a destination and queue its focus intent; `None` leaves BACK to the page.
-    /// Modal and keyboard owners never enter this path.
-    fn back_on_strip(&mut self, _arg: &H::Arg, _elem: H::Elem) -> Option<H::Arg> { None }
+    /// chooses a focus target or the platform root; `None` leaves BACK to the page. This never
+    /// activates a tab. Modal and keyboard owners never enter this path.
+    fn back_on_strip(&mut self, _elem: H::Elem) -> Option<StripBack<H::Elem>> { None }
 }
 
 /// **The shared top bar as the page on top presents it this frame, or `None` when it is not drawn.**
@@ -2194,8 +2200,25 @@ where
                             view.group_of(&key.elem, &addressed.cx::<H>(views, measure)) == Some(super::containers::tabs::STRIP)
                         });
                     if let Some(key) = on_strip {
-                        if let Some(arg) = self.nav.top_page().and_then(|page| rig.back_on_strip(&page.arg, key.elem)) {
-                            out.push(Stamped { from: MachineId::Input, fx: Fx::Nav(NavOp::SelectTab(arg)) });
+                        if let Some(action) = rig.back_on_strip(key.elem) {
+                            match action {
+                                StripBack::Focus(elem) => {
+                                    let owner = InputOwner::Entry(key.entry);
+                                    let outcome = self.focus_resolution(rig, &addressed, key.entry, 1, tap,
+                                        |engine, view, cx| {
+                                            let group = view.group_of(&elem, cx);
+                                            if group != Some(super::containers::tabs::STRIP)
+                                                || view.place(&elem, cx, At::SpringTarget).is_none() { return Outcome::Nothing; }
+                                            engine.set(owner, FocusKey { entry: key.entry, elem }, group, plx_machine::machine::By::Dir)
+                                        });
+                                    if let Outcome::Moved { from, to, by } = outcome {
+                                        self.input.abandon_if_off(key.entry, to);
+                                        out.push(Stamped { from: MachineId::Input, fx: Fx::Deliver(MachineId::Instance(id),
+                                            Delivery::Screen(ScreenEvent::FocusMoved { from, to, by })) });
+                                    }
+                                }
+                                StripBack::Root => { report.back_at_root = true; rig.back_at_root(); }
+                            }
                             return;
                         }
                     }

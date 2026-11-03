@@ -296,7 +296,7 @@ mod root_back_tests {
 
         let (_, report) = crate::app::bridge::frame(&mut d, &mut rig,
             plx_machine::machine::Tick { ms: 16, dt_us: 16_000 }, vec![back_input(16)]);
-        assert!(!report.back_at_root, "Home answered its own root BACK exactly once");
+        assert!(!report.back_at_root, "the first BACK seats Home before the platform");
         assert!(rig.take_reqs().is_empty(), "Home's first BACK seats its navigation pill");
         assert_eq!(d.focus().map(|key| key.elem), Some(plx_screens::home::STRIP_HOME_ELEM));
         assert_eq!(plx_platform::tv::home::home_requests(), before);

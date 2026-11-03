@@ -116,8 +116,9 @@ QA:
   Search itself does not.
 - **BACK reaches the Home pill before the television.** On Home, BACK folds the shelves to the
   hero; the next press seats the Home pill in the top bar. BACK on another bar member, including
-  the account/settings opener, returns to Home with that pill focused. Only BACK on the Home pill
-  of the Home page hands the screen to the television's own Home, keeping the app running (§5.9).
+  the account/settings opener, focuses Home without activating that tab or changing the page.
+  BACK with Home already focused hands the screen to the television's own Home, keeping the app
+  running (§5.9).
   Open surfaces and their inner settings pages keep their normal dismissal/pop order.
 
 ### 2.3 EXIT
@@ -397,7 +398,7 @@ For a series, the page carries its seasons and episodes rather than a single act
 ### 5.9 The root press
 
 **BACK at a root shows the television's own Home screen, and the app keeps running.** Four roots,
-Home with its Home navigation control focused, the who's-watching picker, the QR sign-in, and
+the main bar with Home focused, the who's-watching picker, the QR sign-in, and
 the first-run consent question's first stage.
 
 **The fourth was the hard one, and it stayed open for a while for a reason worth keeping**: going

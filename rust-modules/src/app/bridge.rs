@@ -2357,10 +2357,10 @@ impl Rig<AppHost> for Bridge {
         self.reqs.push(LoopReq::BackAtRoot);
     }
 
-    fn back_on_strip(&mut self, arg: &AppArg, elem: u32) -> Option<AppArg> {
-        if *arg == AppArg::Home && elem == plx_screens::home::STRIP_HOME_ELEM { return None; }
-        self.home_command(HomeCmd::FocusStrip(HomeTab::Home));
-        Some(AppArg::Home)
+    fn back_on_strip(&mut self, elem: u32) -> Option<plx_ui::dispatch::StripBack<u32>> {
+        use plx_ui::dispatch::StripBack;
+        Some(if elem == plx_screens::home::STRIP_HOME_ELEM { StripBack::Root }
+            else { StripBack::Focus(plx_screens::home::STRIP_HOME_ELEM) })
     }
 }
 
@@ -3724,7 +3724,7 @@ pub(crate) fn nav_tab(
 /// answered a press differently: Home returned with focus restored to wherever the press had left
 /// it, which is the strip, or did nothing at all on Home. It seats the hero's action row instead,
 /// the same place the strip's DOWN link goes. BACK from content may first restore its source
-/// pill ([`nav_tab`]'s `focus_pill`); BACK on the bar goes to Home with its Home pill focused.
+/// pill ([`nav_tab`]'s `focus_pill`); BACK on the bar focuses Home without activating that tab.
 pub(crate) fn nav_home_pill(
     d: &mut Dispatcher<AppHost>, rig: &mut Bridge, ret: Option<ReturnState<u32, PageMemory>>,
 ) {

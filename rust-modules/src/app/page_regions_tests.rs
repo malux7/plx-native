@@ -63,7 +63,7 @@ struct Row {
     back_from_content: &'static [Out],
     /// …from the header row.
     back_from_header: &'static [Out],
-    /// …from the strip (every page: one press returns to Home's navigation control).
+    /// …from the strip (every page: one press focuses Home without activating its page).
     back_from_nav: &'static [Out],
     /// The page on top once the page has left.
     leaves_to: AppArg,
@@ -280,7 +280,7 @@ impl Fails {
 fn outcome(r: &Rig, performed: &[String]) -> Out {
     match performed.iter().find_map(|label| LEAVES.iter().find(|leave| label.starts_with(**leave))) {
         Some(leave) => Out::Leave(leave),
-        None if r.on(&AppArg::Home) && r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME) => Out::HomeNav,
+        None if r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME) => Out::HomeNav,
         None => match r.region() {
             Some(place) => Out::Stay(place),
             None => Out::Stay(Place::Content),
@@ -290,6 +290,7 @@ fn outcome(r: &Rig, performed: &[String]) -> Out {
 
 /// BACK pressed until the page leaves or `expected` is spent; each press's outcome is compared.
 fn back_sequence(r: &mut Rig, row: &Row, what: &str, expected: &[Out], f: &mut Fails) {
+    let original_entry = r.d.nav.top_page().map(|page| page.id);
     let mut seen = Vec::new();
     for _ in 0..expected.len() {
         let performed = r.press(Key::Back);
@@ -299,9 +300,14 @@ fn back_sequence(r: &mut Rig, row: &Row, what: &str, expected: &[Out], f: &mut F
     }
     f.check(seen == expected, || format!("{}: BACK {what}: expected {expected:?}, saw {seen:?}", row.name));
     if expected.last() == Some(&Out::HomeNav) {
-        f.check(r.on(&AppArg::Home) && r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME),
-            || format!("{}: BACK {what} must end on Home's Home control", row.name));
+        f.check(r.d.nav.top_page().map(|page| page.id) == original_entry && r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME),
+            || format!("{}: BACK {what} must focus Home without leaving the current page", row.name));
         f.check(r.bridge.take_reqs().is_empty(), || format!("{}: BACK {what} must not leave for the platform", row.name));
+        r.press(Key::Back);
+        f.check(matches!(r.bridge.take_reqs().as_slice(), [LoopReq::BackAtRoot]),
+            || format!("{}: another BACK with Home focused must request platform Home", row.name));
+        f.check(r.d.nav.top_page().map(|page| page.id) == original_entry,
+            || format!("{}: the root press must keep the app's current page", row.name));
     }
     if let Some(Out::Leave(_)) = expected.last() {
         r.frames(80);

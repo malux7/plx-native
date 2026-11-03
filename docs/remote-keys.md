@@ -374,10 +374,11 @@ lower**" (<https://webostv.developer.lge.com/develop/guides/back-button>). The d
 
 **Home navigation before the platform:** BACK from Home's shelves folds to the hero, then seats
 Home in the main bar. BACK from another main-bar control (including the account/settings opener)
-returns to Home with its Home control focused. Only another BACK there reaches the platform.
+focuses Home without activating that tab or changing the current page. BACK with Home already
+focused reaches the platform.
 A settings surface still pops its inner pages and dismisses before the main bar owns BACK.
 
-**What the app does today:** BACK at a ROOT — Home's focused Home control, the who's-watching picker's root, the QR
+**What the app does today:** BACK at a ROOT — the main bar's focused Home control, the who's-watching picker's root, the QR
 sign-in, and the first-run consent question's first stage — hands the screen back to the television
 and keeps running (`app::input::back_at_root` → `webos::go_home`, which asks SAM to launch
 `com.webos.app.home` and falls back to minimizing the surface). At the consent stage the request is
