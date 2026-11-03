@@ -116,7 +116,9 @@ QA:
   Search itself does not.
 - **BACK reaches the Home pill before the television.** On Home, BACK folds the shelves to the
   hero; the next press seats the Home pill in the top bar. BACK on another bar member, including
-  the account/settings opener, focuses Home without activating that tab or changing the page.
+  the account/settings opener, focuses Home. From the main Movies/Shows library, this also
+  restores the Home page; the library's card → header → own tab steps still happen first.
+  On the other pages, the shared bar only changes focus.
   BACK with Home already focused hands the screen to the television's own Home, keeping the app
   running (§5.9).
   Open surfaces and their inner settings pages keep their normal dismissal/pop order.

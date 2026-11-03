@@ -2357,7 +2357,10 @@ impl Rig<AppHost> for Bridge {
         self.reqs.push(LoopReq::BackAtRoot);
     }
 
-    fn back_on_strip(&mut self, elem: u32) -> Option<plx_ui::dispatch::StripBack<u32>> {
+    fn back_on_strip(&mut self, arg: &AppArg, elem: u32) -> Option<plx_ui::dispatch::StripBack<u32>> {
+        // The main library owns its leave-to-Home path. Let it restore the Home page as well
+        // as its navigation focus; a Home control already focused remains the platform root.
+        if matches!(arg, AppArg::Library) && elem != plx_screens::home::STRIP_HOME_ELEM { return None; }
         use plx_ui::dispatch::StripBack;
         Some(if elem == plx_screens::home::STRIP_HOME_ELEM { StripBack::Root }
             else { StripBack::Focus(plx_screens::home::STRIP_HOME_ELEM) })
@@ -3724,7 +3727,8 @@ pub(crate) fn nav_tab(
 /// answered a press differently: Home returned with focus restored to wherever the press had left
 /// it, which is the strip, or did nothing at all on Home. It seats the hero's action row instead,
 /// the same place the strip's DOWN link goes. BACK from content may first restore its source
-/// pill ([`nav_tab`]'s `focus_pill`); BACK on the bar focuses Home without activating that tab.
+/// pill ([`nav_tab`]'s `focus_pill`). Library BACK restores Home with Home focused; the other
+/// shared-bar BACK paths only move focus to Home.
 pub(crate) fn nav_home_pill(
     d: &mut Dispatcher<AppHost>, rig: &mut Bridge, ret: Option<ReturnState<u32, PageMemory>>,
 ) {

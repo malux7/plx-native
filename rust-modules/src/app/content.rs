@@ -1008,8 +1008,8 @@ pub(crate) fn library_navigation(
             bridge::nav_push_with_return(pages, arg, ret);
         }
         LibraryReq::Account => chip_activate(pages),
-        LibraryReq::BackToHome { kind } => {
-            bridge::nav_tab(pages, rig, HomeTab::Home, Some(crate::app::chrome::Pill::Section(*kind)), Some(ret));
+        LibraryReq::BackToHome { .. } => {
+            bridge::nav_tab(pages, rig, HomeTab::Home, Some(crate::app::chrome::Pill::Home), Some(ret));
         }
         LibraryReq::Tab(HomeTab::Home) => bridge::nav_home_pill(pages, rig, Some(ret)),
         LibraryReq::Tab(tab) => bridge::nav_tab(pages, rig, *tab, None, Some(ret)),

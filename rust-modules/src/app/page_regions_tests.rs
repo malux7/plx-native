@@ -63,7 +63,7 @@ struct Row {
     back_from_content: &'static [Out],
     /// …from the header row.
     back_from_header: &'static [Out],
-    /// …from the strip (every page: one press focuses Home without activating its page).
+    /// …from the strip (the library leaves for Home; the other pages only focus Home).
     back_from_nav: &'static [Out],
     /// The page on top once the page has left.
     leaves_to: AppArg,
@@ -74,9 +74,9 @@ struct Row {
 const ROWS: [Row; 4] = [
     Row {
         name: "Library", mount: movies_library, arrival: Place::Content, up_lands: Some("collections"), own_pill: TAB_KEY_MOVIES,
-        back_from_content: &[Out::Stay(Place::Content), Out::Stay(Place::Header), Out::Stay(Place::Nav), Out::HomeNav],
-        back_from_header: &[Out::Stay(Place::Nav), Out::HomeNav],
-        back_from_nav: &[Out::HomeNav],
+        back_from_content: &[Out::Stay(Place::Content), Out::Stay(Place::Header), Out::Stay(Place::Nav), Out::Leave("library:BackToHome")],
+        back_from_header: &[Out::Stay(Place::Nav), Out::Leave("library:BackToHome")],
+        back_from_nav: &[Out::Leave("library:BackToHome")],
         leaves_to: AppArg::Home, opener: None,
     },
     Row {
@@ -312,6 +312,14 @@ fn back_sequence(r: &mut Rig, row: &Row, what: &str, expected: &[Out], f: &mut F
     if let Some(Out::Leave(_)) = expected.last() {
         r.frames(80);
         f.check(r.on(&row.leaves_to), || format!("{}: BACK {what} should end on {}, the top page is {}", row.name, named(Some(&row.leaves_to)), named(r.d.top_arg())));
+        if row.name == "Library" {
+            f.check(r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME),
+                || format!("Library: BACK {what} must focus Home on the restored Home page"));
+            f.check(r.bridge.take_reqs().is_empty(), || "Library must show Home before requesting the platform".into());
+            r.press(Key::Back);
+            f.check(matches!(r.bridge.take_reqs().as_slice(), [LoopReq::BackAtRoot]),
+                || "BACK with Home focused on the restored Home page must reach the platform".into());
+        }
     }
 }
 

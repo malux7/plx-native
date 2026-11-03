@@ -374,8 +374,9 @@ lower**" (<https://webostv.developer.lge.com/develop/guides/back-button>). The d
 
 **Home navigation before the platform:** BACK from Home's shelves folds to the hero, then seats
 Home in the main bar. BACK from another main-bar control (including the account/settings opener)
-focuses Home without activating that tab or changing the current page. BACK with Home already
-focused reaches the platform.
+focuses Home. From the main Movies/Shows library it also restores the Home page, after the usual
+card → library header → own tab steps. On other pages it only changes focus.
+BACK with Home already focused reaches the platform.
 A settings surface still pops its inner pages and dismisses before the main bar owns BACK.
 
 **What the app does today:** BACK at a ROOT — the main bar's focused Home control, the who's-watching picker's root, the QR

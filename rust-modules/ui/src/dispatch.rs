@@ -288,7 +288,7 @@ pub trait Rig<H: Host> {
     /// BACK on a member of the shared bar, before the underlying page sees it. The application
     /// chooses a focus target or the platform root; `None` leaves BACK to the page. This never
     /// activates a tab. Modal and keyboard owners never enter this path.
-    fn back_on_strip(&mut self, _elem: H::Elem) -> Option<StripBack<H::Elem>> { None }
+    fn back_on_strip(&mut self, _arg: &H::Arg, _elem: H::Elem) -> Option<StripBack<H::Elem>> { None }
 }
 
 /// **The shared top bar as the page on top presents it this frame, or `None` when it is not drawn.**
@@ -2200,7 +2200,7 @@ where
                             view.group_of(&key.elem, &addressed.cx::<H>(views, measure)) == Some(super::containers::tabs::STRIP)
                         });
                     if let Some(key) = on_strip {
-                        if let Some(action) = rig.back_on_strip(key.elem) {
+                        if let Some(action) = self.nav.top_page().and_then(|page| rig.back_on_strip(&page.arg, key.elem)) {
                             match action {
                                 StripBack::Focus(elem) => {
                                     let owner = InputOwner::Entry(key.entry);

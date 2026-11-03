@@ -64,20 +64,37 @@ fn back_from_every_other_home_bar_member_including_settings_lands_on_home() {
     }
 }
 
-#[test]
-fn back_from_library_bar_focuses_home_without_activating_its_page() {
-    let mut w = World::movies_library("back-library-home-pill", false);
-    for _ in 0..8 {
-        if w.focus().is_some_and(|key| key.elem >= plx_ui::dispatch::STRIP_BASE) { break; }
-        w.press(Key::Up);
+fn library_back_path(tab: HomeTab, own_pill: u32, name: &str) {
+    let mut w = World::movies_library(name, true);
+    if tab == HomeTab::Shows {
+        nav_tab(&mut w.d, &mut w.bridge, tab, None, None);
+        w.frames(60);
+        w.bridge.stores.browse.borrow_mut().seed_episodes_for_test(60);
+        w.frames(60);
     }
-    assert_eq!(w.focus().map(|key| key.elem), Some(plx_screens::home::STRIP_MOVIES_ELEM));
+    assert_eq!(w.grid_cell(), Some((0, 0)), "the library opens on its first card");
     w.press(Key::Back);
-    assert!(w.on(&AppArg::Library), "moving focus must not activate the Home tab");
-    assert_eq!(w.elem(), Some(plx_screens::home::STRIP_HOME_ELEM));
-    assert!(w.bridge.take_reqs().is_empty());
+    assert!(w.on(&AppArg::Library));
+    assert!(w.grid_cell().is_none() && w.elem().is_some_and(|elem| elem < plx_ui::dispatch::STRIP_BASE),
+        "the first BACK reaches the library header");
+    w.press(Key::Back);
+    assert!(w.on(&AppArg::Library));
+    assert_eq!(w.elem(), Some(own_pill), "the second BACK reaches the library's own tab");
+    w.press(Key::Back);
+    assert_home_focus(&w);
+    assert!(w.bridge.take_reqs().is_empty(), "show Home before requesting platform Home");
     w.press(Key::Back);
     assert!(matches!(w.bridge.take_reqs().as_slice(), [LoopReq::BackAtRoot]));
+}
+
+#[test]
+fn movies_back_shows_home_with_home_focused_before_platform_home() {
+    library_back_path(HomeTab::Movies, plx_screens::home::STRIP_MOVIES_ELEM, "back-movies-home-page");
+}
+
+#[test]
+fn shows_back_shows_home_with_home_focused_before_platform_home() {
+    library_back_path(HomeTab::Shows, plx_screens::home::STRIP_SHOWS_ELEM, "back-shows-home-page");
 }
 
 #[test]
