@@ -600,3 +600,11 @@ to 17882145870915066293. All three anchors were recorded again on the merged tre
 interval and halved idle sleeps, passed `plxnative-rec check`, and were installed with
 `tools/plxnative-rec rerecord`, anchors retained. `make check-replay` replays all three with
 `verdict=SAME` in Targets and Resolve and every difference counter at zero.
+
+The final-BACK exit confirmation adds a modal argument and screen state shape. The prior shape
+12149748892022442062 is refused; the three synthetic anchors were rerecorded at shape
+11612705509628289144 through `tools/plxnative-rec rerecord`, keeping their anchor flags.
+Linux offscreen EGL now uses the existing host frame pacer, since it cannot honour compositor
+vsync; this keeps captures within the unchanged decoded-record budget. At 960x540 the anchors
+contain 302, 796 and 662 frames. All six Targets/Resolve replays completed with every difference
+counter zero. These are simulator results, not TV performance evidence.

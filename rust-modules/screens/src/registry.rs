@@ -1423,8 +1423,10 @@ pub enum ConsentCmd {
 /// the dispatcher yet. Each names the phase that retires it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LoopReq {
-    /// BACK at a root the platform owns (Home, the FIRST consent question): hand the screen to
-    /// the television. Retires with the Navigation root rule (phase 12).
+    /// The final exit dialog was explicitly confirmed.
+    QuitConfirmed,
+    /// Final BACK: confirm exit from the main navigation bar; entry/setup roots retain the
+    /// platform Home behaviour without answering their pending question.
     BackAtRoot,
     /// Privacy & data → Delete all local data, confirmed: erase, sign out, land on sign-in.
     /// Retires when Session owns the sign-in (phase 6).
@@ -1814,6 +1816,7 @@ pub mod page_id {
 /// `decision-alert`, `settings-*`) never press.
 #[derive(Clone, PartialEq, Eq)]
 pub enum AppArg {
+    ExitConfirmation,
     LibraryMenu(LibraryMenuArg),
     /// The profile menu (`screens::account_menu`), presented on the shared `ModalStack` over
     /// whichever bar-wearing page the chip was pressed on. **It carries nothing**, and that is the
@@ -1920,7 +1923,7 @@ pub const ARG_SHAPE: &str = "AppArg{Login,Profiles,Onboard,Home,Library,LibraryC
      PlayerOverlay{Tracks(tab:i32),Info,Chapters,More(page:u8)},\
      AltSources{host:u32,sid:u32,rk:str,anchor:[u32;4]},\
      VersionsPanel{host:u32,sid:u32,rk:str,anchor:[u32;4]},\
-     TracksPanel{page:i32},AboutPanel,PersonBio,CollectionAbout,AccountMenu,\
+     TracksPanel{page:i32},AboutPanel,PersonBio,CollectionAbout,AccountMenu,ExitConfirmation,\
      ItemMenu{sid:u32,rk:str,kind:{Card{from_deck:bool,type:u32},Episode{mark:u32},Season{mark:u32},Catalog{state:u32}},\
      host:u32,focus:Option<{entry:u32,elem:u32}>,anchor:[u32;4],loaded_episode:bool,from_home:bool,catalog:Option<{guid:str}>},\
      WatchlistMenu{host:u32,options:{type:u32,sort:u32,descending:bool,show:u32},anchor:[u32;4]}}";
@@ -1948,6 +1951,7 @@ impl LogicalState for AppArg {
             Self::WatchlistMenu(arg) => { c.u32(13); arg.write(c); }
             // 14, forward of the Watchlist menu's 13.
             Self::VersionsPanel(arg) => { c.u32(14); arg.write(c); }
+            Self::ExitConfirmation => { c.u32(15); }
             // The seven PAGE variants keep the canon bytes `Legacy(Route)` wrote — a `0` tag and
             // then the route's own — so a recording taken before the fold and one taken after are
             // byte-comparable at every page frame. Only the SHAPE STRING moved, which is what the
@@ -2000,7 +2004,8 @@ impl plx_ui::screen::ScreenArg for AppArg {
             | AppArg::TracksPanel(_)
             | AppArg::AboutPanel
             | AppArg::PersonBio
-            | AppArg::CollectionAbout => Chrome::None,
+            | AppArg::CollectionAbout
+            | AppArg::ExitConfirmation => Chrome::None,
         }
     }
     fn id(&self) -> ScreenId {
@@ -2033,6 +2038,7 @@ impl plx_ui::screen::ScreenArg for AppArg {
             // screen's identity in a recorded state and in `same_instance`, so they are allocated
             // forward and a fold may not renumber them. 5 and 6 are vacant (the two popover routes
             // phase 10 deleted); 8 and 9 belong to Detail and Person, which mount from `Content`.
+            AppArg::ExitConfirmation => 31,
             AppArg::Login => 1,
             AppArg::Profiles => 2,
             AppArg::Onboard => 3,
@@ -2310,6 +2316,7 @@ where
             // `AppArg::Content`. Phase 12's fold deleted the two values with the enum, so the
             // match is exhaustive over pages that can really mount and there is no unreachable
             // arm left to keep honest.
+            AppArg::ExitConfirmation => Box::new(crate::exit_confirmation::ExitConfirmation::new(entry)),
             AppArg::Settings(root) => {
                 Box::new(RouteSurface::new(entry, id, Family::Settings, *root))
             }
@@ -2390,6 +2397,7 @@ pub fn every_surface_arg() -> Vec<AppArg> {
         AppArg::AboutPanel,
         AppArg::PersonBio,
         AppArg::CollectionAbout,
+        AppArg::ExitConfirmation,
     ];
     // The player's panels are ONE screen with several kinds, and each answers a different
     // `Screen::name` — so every kind is listed, not one representative.
@@ -2407,6 +2415,7 @@ pub fn every_surface_arg() -> Vec<AppArg> {
             | AppArg::AboutPanel
             | AppArg::PersonBio
             | AppArg::CollectionAbout
+            | AppArg::ExitConfirmation
             | AppArg::PlayerOverlay(_)
             | AppArg::Settings(_)
             | AppArg::FirstRunConsent(_) => {}
@@ -2487,6 +2496,7 @@ pub const SCREEN_SHAPES: &[&str] = &[
     crate::watchlist::menu::SHAPE,
     crate::catalog::CatalogScreen::SHAPE,
     crate::versions_panel::SHAPE,
+    crate::exit_confirmation::SHAPE,
 ];
 
 /// The pin over [`SCREEN_SHAPES`] — bump it in the same edit that adds an entry, and say why.
@@ -2676,7 +2686,8 @@ pub const SCREEN_SHAPES: &[&str] = &[
 // root, 1 Quality, 2 Speed) where it carried `More(quality:bool)`, so the Speed page can be
 // addressed. One bump; the three replay fixtures were re-recorded against it; the previous pin was
 // 0x9425_f33f_3f53_6aa5.
-const SCREEN_SHAPES_PIN: u64 = 0xb633_b65b_ed93_ca93;
+// Exit confirmation is a new modal argument and logical screen shape.
+const SCREEN_SHAPES_PIN: u64 = 0x863be639ba95e691;
 
 #[cfg(test)]
 mod arg_tests {

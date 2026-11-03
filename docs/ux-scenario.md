@@ -119,14 +119,14 @@ QA:
   the account/settings opener, focuses Home. From the main Movies/Shows library, this also
   restores the Home page; the library's card → header → own tab steps still happen first.
   On the other pages, the shared bar only changes focus.
-  BACK with Home already focused hands the screen to the television's own Home, keeping the app
-  running (§5.9).
+  BACK with Home already focused opens the exit confirmation (§5.9). Cancel (the default) or
+  the remote's BACK keeps the app open; Quit closes the process and returns to LG Home.
   Open surfaces and their inner settings pages keep their normal dismissal/pop order.
 
 ### 2.3 EXIT
 
-The remote's **EXIT** key terminates the app outright, and since 2026-09-03 it is the ONLY key
-that does: BACK cannot quit from anywhere, by accident or otherwise, and a key labelled EXIT
+The remote's **EXIT** key terminates the app outright, without a confirmation. Final BACK in
+the main navigation asks first; only confirming Quit terminates. A key labelled EXIT
 carries no such ambiguity (`app.rs`, the `Key::Exit` arm). Device-verified 2026-08-22: press →
 `EXIT key: terminating` in the event log → the process is gone.
 
@@ -221,8 +221,8 @@ Play only then — never blindly, because a failed fetch would otherwise play wh
 before. On any other shelf, a show or season card simply opens its page.
 
 **BACK** from the shelves returns focus to the hero's Play/Resume action. The next BACK focuses
-Home in the top bar; another BACK there shows the television's own Home, keeping the app running
-(§5.9). BACK from a secondary hero action first returns to Play/Resume.
+Home in the top bar; another BACK there asks whether to quit. Confirming closes the process
+and returns to LG Home (§5.9). BACK from a secondary hero action first returns to Play/Resume.
 
 **Overscan.** The UI is authored at a fixed logical 1920×1080 with a 90 px horizontal margin
 (4.7%), inside LG's 5% overscan frame; nothing load-bearing is drawn outside it.
@@ -399,9 +399,13 @@ For a series, the page carries its seasons and episodes rather than a single act
 
 ### 5.9 The root press
 
-**BACK at a root shows the television's own Home screen, and the app keeps running.** Four roots,
-the main bar with Home focused, the who's-watching picker, the QR sign-in, and
-the first-run consent question's first stage.
+**BACK with Home focused in the main bar asks whether to quit PLXNative.** The shared decision
+alert opens on Cancel. Cancel or BACK dismisses it and restores Home focus without leaving the
+app. Quit requests LG Home, stops the app loop and reaches its normal shutdown and process exit;
+it does not leave the app running in the background. Clicking outside does not answer the alert.
+
+The who's-watching picker, QR sign-in and first-run consent roots retain their platform Home
+behaviour: they keep running with their pending state unanswered.
 
 **The fourth was the hard one, and it stayed open for a while for a reason worth keeping**: going
 to the LG Home neither answers nor dismisses the consent question, so nothing is stranded by it —
@@ -412,17 +416,12 @@ took a screen change rather than a key-arm change: `ConsentPage` (`screens/conse
 `app::input::back_at_root` performs the platform press. The question is left up — the LG Home
 neither answers nor dismisses it, and selecting the tile again lands straight back on it.
 
-There is no figure, because the screen it produces is LG's launcher and not ours.
+The exit question uses the shared decision-alert component; the destination after confirmation
+is LG's launcher.
 
-This is the platform's behaviour rather than a choice: LG's back-button guide says that at an app's
-entry page the platform "launches the Home launcher on webOS TV 5.0 or lower", and LG's submission
-rules require entry-page BACK to show the Home screen. It took three shapes to get there. Until
-2026-08-21 BACK at Home quit on the press, which discarded a lot of state on one keystroke with no
-undo. Until 2026-09-03 it raised a Cancel/Exit alert instead — which fixed the accident and kept the
-wrong destination, and which the picker and the sign-in screen never had at all. On those two, BACK
-appeared to do nothing; on the sign-in screen it was worse than nothing, because it silently killed
-the pin poller behind the QR code it left on screen. The remote's EXIT key still terminates the
-app; BACK no longer does, anywhere.
+The main-bar confirmation is this fork's chosen behaviour. It deliberately differs from the
+previous immediate-background action; no automatic-quit or confirmation-bypass flag is added.
+The remote EXIT key remains an immediate exit.
 
 ### 5.10 Failure read-out
 

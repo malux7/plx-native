@@ -1770,21 +1770,9 @@ pub(crate) fn key_back(
     // already took the key before it could reach this function at all.
 }
 
-/// **BACK at a ROOT — the press that leaves the app's own navigation**, lifted out of [`key_back`]'s
-/// last `else` so a host test can press it.
-///
-/// It is one call and it is worth its own function for exactly one reason: this is where the app
-/// answers "there is nowhere further back to go", and the regression to guard is a future edit
-/// putting `running = false` — or a modal question — back where the platform call now goes.
-/// `key_back` itself is unreachable from a unit test (its Player arm calls `exit_player`, which
-/// pulls the Starfish/ACB seam into the link), so without this split the one branch that matters
-/// most could only be graded by reading it.
-///
-/// **It does not end the process, and nothing about a BACK press does any more.** The remote's own
-/// EXIT key still terminates (LG checklist item 38), and a script that wants the app closed uses
-/// SAM's `closeByAppId` exactly as `make kill`, `tests/run.py` and `tools/tv-session.sh` already do.
-/// That is why the old `/tmp/plxnative-noexitconfirm` bypass went with the alert: it existed to let
-/// a headless caller quit by pressing BACK, and BACK is no longer a quit for anybody.
+/// Platform BACK for sign-in, profile selection and first-run consent roots. The signed-in
+/// navigation bar instead presents the exit confirmation in `run::reduce_navigation_request`.
+/// These entry/setup pages retain their unanswered state when the platform Home is shown.
 pub(crate) fn back_at_root() {
     if plx_platform::tv::home::take_root_press() {
         plx_platform::tv::home::go_home();

@@ -376,28 +376,20 @@ lower**" (<https://webostv.developer.lge.com/develop/guides/back-button>). The d
 Home in the main bar. BACK from another main-bar control (including the account/settings opener)
 focuses Home. From the main Movies/Shows library it also restores the Home page, after the usual
 card → library header → own tab steps. On other pages it only changes focus.
-BACK with Home already focused reaches the platform.
+BACK with Home already focused opens a Cancel / Quit confirmation. Cancel is selected by
+default; the remote BACK also cancels. Only Quit returns to LG Home and closes the process.
 A settings surface still pops its inner pages and dismisses before the main bar owns BACK.
 
-**What the app does today:** BACK at a ROOT — the main bar's focused Home control, the who's-watching picker's root, the QR
-sign-in, and the first-run consent question's first stage — hands the screen back to the television
-and keeps running (`app::input::back_at_root` → `webos::go_home`, which asks SAM to launch
-`com.webos.app.home` and falls back to minimizing the surface). At the consent stage the request is
-raised by the screen itself (`screens/consent.rs` pushes `LoopReq::BackAtRoot`) and performed by
-`app/run.rs`'s request drain; the question is left up rather than answered or dismissed, and
-selecting the tile again lands straight back on it. It does not ask, and it does not quit. The
-remote's own EXIT key still terminates (checklist #38), and a script that wants the app closed uses
-SAM's `closeByAppId` exactly as
-`make kill`, `tests/run.py` and `tools/tv-session.sh` already do — which is why the
-`/tmp/plxnative-noexitconfirm` bypass went away with the "Exit PlxNative?" alert rather than being
-kept: it existed only to let a caller quit by pressing BACK, and BACK is no longer a quit for
-anybody.
+**Final BACK from the main navigation asks first.** The exit confirmation is a registered alert
+surface (`ExitConfirmation`), trapping focus on Cancel and Quit. Cancel or BACK restores the
+underlying Home control. Quit requests the platform Home and clears the app's running flag,
+reusing the normal shutdown and process-exit path of the remote EXIT key. It closes the process
+rather than just minimizing its surface. The remote EXIT key still terminates directly.
 
-**What replaced the confirmation is the platform's own behaviour, not its absence.** The alert was
-added deliberately on 2026-08-21 and the warning that stood here — do not delete it on the strength
-of the submission quotation alone — was right: what closed this is the `develop/*` statement of what
-the platform DOES at an entry page on webOS ≤5, which makes "show the Home screen" a behaviour to
-reproduce rather than a rule to obey by quitting.
+The profile picker, QR sign-in and first-run consent roots keep the previous platform Home
+behaviour (`app::input::back_at_root`), leaving their pending state unanswered. Automation that
+needs unconditional closure still uses SAM's `closeByAppId`, as `make kill` and `tv-session` do.
+The retired `plxnative-noexitconfirm` bypass is not reintroduced.
 
 ---
 

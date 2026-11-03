@@ -133,3 +133,71 @@ fn back_from_another_hero_action_or_its_shelf_returns_to_play_first() {
     assert_eq!(w.elem(), play, "the fold must not restore the last visited secondary hero control");
     assert!(w.bridge.take_reqs().is_empty());
 }
+
+#[test]
+fn the_last_home_back_opens_a_confirmation_instead_of_backgrounding() {
+    let mut w = World::home_grid("confirm-exit-root", 2, 3);
+    let before = plx_platform::tv::home::home_requests();
+    w.press(Key::Back);
+    w.press(Key::Back);
+    for req in w.bridge.take_reqs() {
+        assert!(crate::app::run::reduce_navigation_request(req, &mut w.d).is_ok());
+    }
+    assert!(crate::app::run::reduce_navigation_request(LoopReq::BackAtRoot, &mut w.d).is_ok());
+    w.frames(60);
+    assert!(w.d.nav.modals.top().is_some(), "the final BACK must ask before leaving");
+    assert_eq!(w.d.nav.modals.surfaces.len(), 1, "repeated requests must not stack questions");
+    assert!(crate::app::run::reduce_navigation_request(LoopReq::BackAtRoot, &mut w.d).is_ok());
+    assert_eq!(plx_platform::tv::home::home_requests(), before);
+}
+
+fn open_exit_confirmation(w: &mut World) {
+    w.press(Key::Back);
+    w.press(Key::Back);
+    for req in w.bridge.take_reqs() {
+        assert!(crate::app::run::reduce_navigation_request(req, &mut w.d).is_ok());
+    }
+    w.frames(60);
+    assert!(matches!(w.d.nav.modals.top().map(|s| &s.entry.arg), Some(AppArg::ExitConfirmation)));
+    assert_eq!(w.elem(), Some(0), "Cancel must be the opening choice");
+}
+
+#[test]
+fn exit_confirmation_cancel_and_back_restore_the_home_focus() {
+    let mut w = World::home_grid("confirm-exit-cancel", 2, 3);
+    let before = plx_platform::tv::home::home_requests();
+    open_exit_confirmation(&mut w);
+    w.press(Key::Ok);
+    w.frames(60);
+    assert!(w.d.nav.modals.top().is_none());
+    assert_home_focus(&w);
+    assert!(w.bridge.take_reqs().is_empty());
+    // Reopen from the Home button, then cancel even with Quit highlighted.
+    w.press(Key::Back);
+    for req in w.bridge.take_reqs() { assert!(crate::app::run::reduce_navigation_request(req, &mut w.d).is_ok()); }
+    w.frames(60);
+    w.press(Key::Right);
+    assert_eq!(w.elem(), Some(1));
+    w.press(Key::Back);
+    w.frames(60);
+    assert!(w.d.nav.modals.top().is_none());
+    assert_home_focus(&w);
+    assert!(w.bridge.take_reqs().is_empty());
+    assert_eq!(plx_platform::tv::home::home_requests(), before);
+}
+
+#[test]
+fn only_confirming_quit_requests_home_and_stops_the_application_loop() {
+    let mut w = World::home_grid("confirm-exit-quit", 2, 3);
+    let before = plx_platform::tv::home::home_requests();
+    open_exit_confirmation(&mut w);
+    w.press(Key::Right);
+    w.press(Key::Ok);
+    let requests = w.bridge.take_reqs();
+    assert!(matches!(requests.as_slice(), [LoopReq::QuitConfirmed]));
+    assert_eq!(plx_platform::tv::home::home_requests(), before, "the dialog only emits an intent");
+    let mut running = true;
+    crate::app::run::quit_confirmed(&mut running);
+    assert!(!running, "the production performer must leave the loop and reach normal process shutdown");
+    assert_eq!(plx_platform::tv::home::home_requests(), before + 1);
+}

@@ -269,5 +269,8 @@
   "browse.clock.notice_year": "TV-Uhr scheint falsch zu gehen ({year}). Über den gespeicherten Schlüssel verbunden.",
   "browse.clock.notice": "TV-Uhr scheint falsch zu gehen. Über den gespeicherten Schlüssel verbunden.",
   "browse.clock.no_key": "Die Uhr dieses Fernsehers scheint falsch zu gehen. Verbinde den Fernseher einmal mit dem Internet und versuche es erneut.",
-  "browse.clock.key_changed": "Der Schlüssel deines Servers hat sich geändert. Verbinde den Fernseher einmal mit dem Internet, damit die App ihn neu prüfen kann."
+  "browse.clock.key_changed": "Der Schlüssel deines Servers hat sich geändert. Verbinde den Fernseher einmal mit dem Internet, damit die App ihn neu prüfen kann.",
+  "browse.exit.question": "PLXNative beenden?",
+  "browse.exit.body": "Möchtest du die Anwendung schließen?",
+  "browse.exit.confirm": "Beenden"
 }

@@ -55,7 +55,8 @@ pub(crate) fn route_word(route: &AppArg) -> &'static str {
         | AppArg::TracksPanel(_)
         | AppArg::AboutPanel
         | AppArg::PersonBio
-        | AppArg::CollectionAbout => "",
+        | AppArg::CollectionAbout
+        | AppArg::ExitConfirmation => "",
     }
 }
 /// **Every PAGE argument** (a word may repeat: the library's three pages are all `library`) — the domain [`route_word`] is applied over to DERIVE the

@@ -719,6 +719,13 @@ where
         })
     }
 
+    /// A presentation of this screen is queued but not mounted yet. Query the shared queue
+    /// rather than keeping an application-side boolean that can outlive a cancelled request.
+    pub fn has_pending_presentation(&self, arg: &H::Arg) -> bool {
+        let matches = |s: &Stamped<H>| matches!(&s.fx, Fx::Nav(NavOp::Present(want)) if want.same_instance(arg));
+        self.parked.iter().any(|(s, _)| matches(s)) || self.queue.iter().any(matches)
+    }
+
     /// The engine's current focus for the input owner (§7.3 step 5).
     pub fn focus(&self) -> Option<FocusKey<H::Elem>> {
         self.owner_entry()

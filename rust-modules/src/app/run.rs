@@ -1419,9 +1419,8 @@ unsafe fn ingest_sdl_event_with_window(app: &mut App, fr: &mut Frame,
             }
         } else if matches!(key, Key::Exit) {
             // The remote's EXIT key — LG's checklist item 38 wants the app terminated,
-            // and unlike BACK at Home's root there is nothing ambiguous about a key
-            // labelled EXIT, so unlike BACK it really does end the process — and it
-            // is now the only key that does.
+            // a key labelled EXIT terminates immediately. Final BACK instead asks for
+            // confirmation before reaching the same normal shutdown path.
             log("EXIT key: terminating");
             app.running = false;
         // (Two player arms stood here — STOP's `exit_player`, and LEFT/RIGHT's `key_scrub`. Both
@@ -2452,12 +2451,28 @@ pub(super) fn reduce_navigation_request(request: plx_screens::registry::LoopReq,
     pages: &mut plx_ui::dispatch::Dispatcher<super::bridge::AppHost>)
     -> Result<(), plx_screens::registry::LoopReq> {
     match request {
-        // Root BACK belongs to platform Home; first-run Onboard BACK has an in-app destination.
-        plx_screens::registry::LoopReq::BackAtRoot => back_at_root(),
+        // Main-bar root BACK asks before exit. Setup roots retain platform Home behaviour.
+        plx_screens::registry::LoopReq::BackAtRoot => {
+            if pages.nav.modals.top().is_some_and(|surface| matches!(surface.entry.arg, AppArg::ExitConfirmation)) {
+                // A repeated root request must not bypass the question already on screen.
+            } else if pages.nav.modals.top().is_none() && pages.top_arg().is_some_and(super::bridge::wears_tab_bar) {
+                if !pages.has_pending_navigation() && !pages.has_pending_presentation(&AppArg::ExitConfirmation) {
+                    pages.nav.next_style = plx_ui::containers::modal::Style::Alert;
+                    pages.request(plx_machine::machine::MachineId::Nav,
+                        plx_machine::machine::NavOp::Present(AppArg::ExitConfirmation));
+                }
+            } else { back_at_root(); }
+        },
         plx_screens::registry::LoopReq::OnboardBack => enter_profiles_from_onboard(pages),
         other => return Err(other),
     }
     Ok(())
+}
+
+/// Use the normal process shutdown path (the same loop flag as the remote EXIT key).
+pub(super) fn quit_confirmed(running: &mut bool) {
+    plx_platform::tv::home::go_home();
+    *running = false;
 }
 
 fn loop_requests(app: &mut App) {
@@ -2467,6 +2482,7 @@ fn loop_requests(app: &mut App) {
             Err(req) => req,
         };
         match req {
+            plx_screens::registry::LoopReq::QuitConfirmed => quit_confirmed(&mut app.running),
             // BACK at a root the platform owns. The FIRST consent stage is the fourth such root
             // and the one the 2026-09-03 rule could not reach until this phase — see the key
             // ladder's dispatcher arm for why a `Popover` could not tell the two BACKs apart.
@@ -3312,7 +3328,8 @@ pub(crate) unsafe fn report(app: &mut App, fr: &mut Frame) {
                 | AppArg::TracksPanel(_)
                 | AppArg::AboutPanel
                 | AppArg::PersonBio
-                | AppArg::CollectionAbout => crate::focusprobe::Screen::Home,
+                | AppArg::CollectionAbout
+                | AppArg::ExitConfirmation => crate::focusprobe::Screen::Home,
         };
         // The probe reads the OWNER, and answers the resting cursor when no player is mounted —
         // which is what every non-player screen used to read off `App`'s second copy.

@@ -269,5 +269,8 @@
   "browse.clock.notice_year": "De tv-klok lijkt verkeerd te staan ({year}). Verbonden met de onthouden sleutel.",
   "browse.clock.notice": "De tv-klok lijkt verkeerd te staan. Verbonden met de onthouden sleutel.",
   "browse.clock.no_key": "De klok van deze tv lijkt verkeerd te staan. Verbind de tv één keer met internet en probeer het opnieuw.",
-  "browse.clock.key_changed": "De sleutel van je server is gewijzigd. Verbind de tv één keer met internet zodat de app hem opnieuw kan controleren."
+  "browse.clock.key_changed": "De sleutel van je server is gewijzigd. Verbind de tv één keer met internet zodat de app hem opnieuw kan controleren.",
+  "browse.exit.question": "PLXNative afsluiten?",
+  "browse.exit.body": "Wil je de toepassing sluiten?",
+  "browse.exit.confirm": "Afsluiten"
 }

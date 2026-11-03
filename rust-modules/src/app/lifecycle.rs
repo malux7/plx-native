@@ -281,7 +281,7 @@ mod root_back_tests {
     /// performer is `back_at_root`. EntryId/InstanceId prove the root was neither replaced nor
     /// torn down, and the container's root fallback is not accidentally entered a second time.
     #[test]
-    fn owned_home_root_back_reaches_platform_home_without_moving_the_root() {
+    fn owned_home_root_back_asks_before_leaving_without_moving_the_root() {
         let _guard = plx_base::testlock::serial();
         plx_platform::tv::home::release_root_press();
         let before = plx_platform::tv::home::home_requests();
@@ -308,7 +308,10 @@ mod root_back_tests {
         for request in requests {
             assert!(crate::app::run::reduce_navigation_request(request, &mut d).is_ok());
         }
-        assert_eq!(plx_platform::tv::home::home_requests(), before + 1);
+        crate::app::bridge::frame(&mut d, &mut rig,
+            plx_machine::machine::Tick { ms: 48, dt_us: 16_000 }, vec![]);
+        assert!(d.nav.modals.top().is_some(), "the final BACK asks for confirmation");
+        assert_eq!(plx_platform::tv::home::home_requests(), before);
         assert_eq!(d.nav.top_page().map(|page| page.id), Some(entry));
         assert_eq!(d.nav.instance_of(entry), Some(instance));
         plx_platform::tv::home::release_root_press();

@@ -27,6 +27,7 @@ pub mod person;
 pub mod person_bio;
 pub mod filmography;
 pub mod home;
+pub mod exit_confirmation;
 pub mod item_menu;
 pub mod library;
 pub mod search;

@@ -1,16 +1,16 @@
-name: Back navigation IPK
+name: Exit confirmation IPK
 
-# Test the Home BACK navigation on its own branch using the standard ARM/package gates.
+# Test the final BACK exit confirmation on its own branch using the standard ARM/package gates.
 # This produces an installable Nightly artifact without publishing a release.
 on:
   push:
-    branches: [feat-back-via-home]
+    branches: [feat-exit-confirmation]
 
 permissions:
   contents: read
 
 concurrency:
-  group: back-home-${{ github.ref }}
+  group: exit-confirmation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       flavor: nightly
       nightly-date: ${{ needs.date.outputs.value }}
       telemetry: development
-      artifact: back-home-ipk
+      artifact: exit-confirmation-ipk
       source-asset: true
       fwcompat: true
       homebrew-manifest: true
