@@ -279,6 +279,10 @@ pub trait Rig<H: Host> {
     /// BACK at the root of the root stack (§3.4): the application decides — the platform's Home
     /// on the television (`root_back_tests`); nothing, by default, in a fixture.
     fn back_at_root(&mut self) {}
+    /// BACK on a member of the shared bar, before the underlying page sees it. The application
+    /// may choose a destination and queue its focus intent; `None` leaves BACK to the page.
+    /// Modal and keyboard owners never enter this path.
+    fn back_on_strip(&mut self, _arg: &H::Arg, _elem: H::Elem) -> Option<H::Arg> { None }
 }
 
 /// **The shared top bar as the page on top presents it this frame, or `None` when it is not drawn.**
@@ -2182,6 +2186,21 @@ where
                 // A direction or OK pressed (DOWN edge) on a page the focus engine owns: the key the
                 // repeated-key signal watches. The player page and a keyboard-owned screen are not
                 // the engine's, so a seek or a typed letter is never a dead press.
+                if back && !self.input.keyboard && self.engine_page() {
+                    let on_strip = self.owner_entry().filter(|entry| self.nav.instance_of(*entry) == Some(id))
+                        .and_then(|entry| self.focus().filter(|key| key.entry == entry))
+                        .filter(|key| {
+                            let Some(view) = Self::owner_view(&self.nav, key.entry) else { return false };
+                            let Split { views, measure, .. } = rig.split();
+                            view.group_of(&key.elem, &addressed.cx::<H>(views, measure)) == Some(super::containers::tabs::STRIP)
+                        });
+                    if let Some(key) = on_strip {
+                        if let Some(arg) = self.nav.top_page().and_then(|page| rig.back_on_strip(&page.arg, key.elem)) {
+                            out.push(Stamped { from: MachineId::Input, fx: Fx::Nav(NavOp::SelectTab(arg)) });
+                            return;
+                        }
+                    }
+                }
                 let watched = match &ev {
                     ScreenEvent::Input(InputEvent { at, kind: InputKind::Key { key, edge: Edge::Down, .. }, .. })
                         if (Dir::of_key(*key).is_some() || *key == Key::Ok)

@@ -75,7 +75,7 @@ fn the_home_heros_disc_adds_then_removes_the_title_by_keys() {
     w.press(Key::Back);
     assert!(w.on(&AppArg::Home), "BACK on the disc leaves Home on top");
     assert!(!menu_up(&w), "and opens no menu");
-    assert_eq!(w.elem(), disc, "with focus where it was");
+    assert_eq!(w.elem(), play, "BACK returns to Play/Resume before the Home pill");
     assert_eq!(w.writes().len(), 2, "and writes nothing");
 }
 

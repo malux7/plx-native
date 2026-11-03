@@ -2213,7 +2213,7 @@ fn quick_down_then_ok_activates_the_hero_still_visible_before_the_snap_midpoint(
 }
 
 #[test]
-fn back_from_grid_folds_to_hero_before_root_back() {
+fn back_from_grid_folds_to_hero_then_home_pill_before_root_back() {
     let _guard = plx_base::testlock::serial();
     let mut state = plx_data::pms::PmsState::default();
     let adapter = std::sync::Arc::new(plx_data::pms::PmsAdapter::default());
@@ -2246,7 +2246,11 @@ fn back_from_grid_folds_to_hero_before_root_back() {
         entry: s.entry,
         elem: HERO_PLAY_ELEM,
     };
-    let (_, root, _) = step(&mut s, snapshot.view(), Some(hero), &back);
+    let (_, bar, _) = step(&mut s, snapshot.view(), Some(hero), &back);
+    assert_eq!(enter_target(&bar), Some(FocusTarget::Elem(FocusKey { entry: s.entry, elem: STRIP_HOME_ELEM })));
+    assert!(!bar.iter().any(|stamped| matches!(&stamped.fx, Fx::App(AppFx::Loop(LoopReq::BackAtRoot)))));
+    let home = FocusKey { entry: s.entry, elem: STRIP_HOME_ELEM };
+    let (_, root, _) = step(&mut s, snapshot.view(), Some(home), &back);
     assert!(root
         .iter()
         .any(|stamped| matches!(&stamped.fx, Fx::App(AppFx::Loop(LoopReq::BackAtRoot)))));

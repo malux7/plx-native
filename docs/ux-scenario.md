@@ -114,8 +114,11 @@ QA:
 
 - **Search is a peer, not a page.** BACK from Search returns to Home. What Search *opens* stacks;
   Search itself does not.
-- **BACK at Home's own root is the end of the chain.** It does not quit and it does not ask. It
-  hands the screen back to the television's own Home, with the app still running (§5.9).
+- **BACK reaches the Home pill before the television.** On Home, BACK folds the shelves to the
+  hero; the next press seats the Home pill in the top bar. BACK on another bar member, including
+  the account/settings opener, returns to Home with that pill focused. Only BACK on the Home pill
+  of the Home page hands the screen to the television's own Home, keeping the app running (§5.9).
+  Open surfaces and their inner settings pages keep their normal dismissal/pop order.
 
 ### 2.3 EXIT
 

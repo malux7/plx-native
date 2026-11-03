@@ -2356,6 +2356,12 @@ impl Rig<AppHost> for Bridge {
     fn back_at_root(&mut self) {
         self.reqs.push(LoopReq::BackAtRoot);
     }
+
+    fn back_on_strip(&mut self, arg: &AppArg, elem: u32) -> Option<AppArg> {
+        if *arg == AppArg::Home && elem == plx_screens::home::STRIP_HOME_ELEM { return None; }
+        self.home_command(HomeCmd::FocusStrip(HomeTab::Home));
+        Some(AppArg::Home)
+    }
 }
 
 impl Bridge {
@@ -3717,8 +3723,8 @@ pub(crate) fn nav_tab(
 /// animates the arrival). The Home pill used to keep it on the strip, so one pill of the four
 /// answered a press differently: Home returned with focus restored to wherever the press had left
 /// it, which is the strip, or did nothing at all on Home. It seats the hero's action row instead,
-/// the same place the strip's DOWN link goes. The BACK key is not a press on the pill and still
-/// lands on the strip pill the user came from ([`nav_tab`]'s `focus_pill`).
+/// the same place the strip's DOWN link goes. BACK from content may first restore its source
+/// pill ([`nav_tab`]'s `focus_pill`); BACK on the bar goes to Home with its Home pill focused.
 pub(crate) fn nav_home_pill(
     d: &mut Dispatcher<AppHost>, rig: &mut Bridge, ret: Option<ReturnState<u32, PageMemory>>,
 ) {

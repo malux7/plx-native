@@ -1,16 +1,16 @@
-name: Library selection IPK
+name: Back navigation IPK
 
-# Test the restart fix on its own branch using the standard ARM/package gates.
+# Test the Home BACK navigation on its own branch using the standard ARM/package gates.
 # This produces an installable Nightly artifact without publishing a release.
 on:
   push:
-    branches: [fix-library-selection-restart]
+    branches: [feat-back-via-home]
 
 permissions:
   contents: read
 
 concurrency:
-  group: library-selection-${{ github.ref }}
+  group: back-home-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       flavor: nightly
       nightly-date: ${{ needs.date.outputs.value }}
       telemetry: development
-      artifact: library-selection-ipk
+      artifact: back-home-ipk
       source-asset: true
       fwcompat: true
       homebrew-manifest: true

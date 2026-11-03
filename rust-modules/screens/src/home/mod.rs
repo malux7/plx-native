@@ -71,7 +71,8 @@ use super::registry::{
 
 const HERO_GROUP: GroupId = GroupId(0);
 const FIRST_HUB_GROUP: u32 = 0x100;
-const HERO_PLAY_ELEM: u32 = 0;
+/// The billboard's primary Play/Resume action, including the target of the BACK fold.
+pub const HERO_PLAY_ELEM: u32 = 0;
 const HERO_INFO_ELEM: u32 = 1;
 /// The Watchlist bookmark disc (`plx_appkit::watchlist_disc`): present only for a hero with a
 /// Watchlist-takeable title ([`PmsMovie::watchlist_subject`]), second in the row, after Play.
@@ -3267,8 +3268,12 @@ impl<H: HomeLike> Machine<H> for HomeScreen {
                         .map(|_| HERO_PLAY_ELEM);
                     fx.push(Fx::App(AppFx::Home(HomeReq::FoldToHero)));
                     fx.invalidate(Provenance::Input);
-                } else {
+                } else if matches!(self.focused_loc(cx.focus.current), Some(Located::Hero(slot)) if slot != 0) {
+                    self.reseat(FocusTarget::Elem(FocusKey { entry: self.entry, elem: HERO_PLAY_ELEM }), cx, fx);
+                } else if cx.focus.current.is_some_and(|key| key.elem == STRIP_HOME_ELEM) {
                     fx.push(Fx::App(AppFx::Loop(LoopReq::BackAtRoot)));
+                } else {
+                    self.command(HomeCmd::FocusStrip(HomeTab::Home), cx, fx);
                 }
                 Handled::Yes
             }
