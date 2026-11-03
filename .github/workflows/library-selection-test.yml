@@ -1,0 +1,42 @@
+name: Library selection IPK
+
+# Test the restart fix on its own branch using the standard ARM/package gates.
+# This produces an installable Nightly artifact without publishing a release.
+on:
+  push:
+    branches: [fix-library-selection-restart]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: library-selection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  date:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.date.outputs.value }}
+    steps:
+      - id: date
+        shell: bash
+        run: echo "value=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: date
+    uses: ./.github/workflows/build-package.yml
+    with:
+      ref: ${{ github.sha }}
+      flavor: nightly
+      nightly-date: ${{ needs.date.outputs.value }}
+      telemetry: development
+      artifact: library-selection-ipk
+      source-asset: true
+      fwcompat: true
+      homebrew-manifest: true
+      caches: true
+      upload-debug-files: false
+    secrets:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
