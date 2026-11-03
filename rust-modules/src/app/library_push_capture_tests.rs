@@ -130,10 +130,10 @@ fn aimed(current: usize, kind: plx_data::browse::SecKind) -> i64 {
     directory.sections()[directory.current().expect("the store points at a library")].key
 }
 
-/// A press aims the store at a library of the pressed kind when it points at the other kind, and
-/// leaves it alone when it already points at one of that kind (the reader's last pick stays).
+/// Without a different saved preference, aiming a tab keeps its current library when its kind
+/// already matches and switches when it does not.
 #[test]
-fn aiming_a_library_moves_the_store_only_across_kinds() {
+fn aiming_without_a_different_saved_choice_keeps_the_matching_kind() {
     let _guard = plx_base::testlock::serial();
     use plx_data::browse::SecKind::{Movie, Show};
     let movies = aimed(0, Movie);
@@ -142,4 +142,96 @@ fn aiming_a_library_moves_the_store_only_across_kinds() {
     assert_eq!(aimed(1, Movie), movies, "a press on Movies leaves Shows for Movies");
     assert_eq!(aimed(0, Show), shows, "a press on Shows leaves Movies for Shows");
     assert_eq!((aimed(0, Movie), aimed(1, Show)), (movies, shows), "the same kind selects nothing");
+}
+
+/// A new Browse owner starts on the first movie library, while the profile's saved choices
+/// already name other libraries. This is a restart, not a tab switch during the same run.
+fn cold_tab_with_saved_library(kind: plx_data::browse::SecKind) {
+    struct Cleanup;
+    impl Drop for Cleanup { fn drop(&mut self) { plx_plex::plex::reset_servers_for_test(); } }
+    let _cleanup = Cleanup;
+    let session = plx_plex::plex::session::TempSession::new("library-cold-tab-choice");
+    let user = "u-library-cold-tab-choice";
+    session.watching(user);
+    plx_plex::plex::reset_servers_for_test();
+    let own = plx_plex::plex::register_for_test("cold-tab-own", "127.0.0.1", 9, "synthetic", "fixture");
+    let shared = plx_plex::plex::register_for_test("cold-tab-share", "127.0.0.1", 10, "synthetic", "fixture");
+    plx_plex::plex::set_current(own);
+    assert!(plx_plex::plex::session::update(|current| {
+        let mut next = current.clone();
+        let mut last = plx_plex::plex::session::LastLibrary { user: user.into(), ..Default::default() };
+        last.set("movie", "cold-tab-own", 3);
+        last.set("show", "cold-tab-own", 4);
+        next.prefs.last_library = vec![last];
+        Some(next)
+    }));
+    let mut rig = Bridge::for_test(|| 0);
+    {
+        let mut browse = rig.stores.browse.borrow_mut();
+        browse.seed_registered_table_for_test([own, shared]);
+        browse.append_section_for_test(0, 3, "Other films", plx_data::browse::SecKind::Movie);
+        browse.append_section_for_test(0, 4, "Other series", plx_data::browse::SecKind::Show);
+    }
+    rig.refresh_browse_directory();
+    let directory = rig.directory.view();
+    assert_eq!(directory.current(), Some(0), "startup still points at the first movie library");
+    let wanted = directory.kind_address(kind).expect("a saved favourite of this kind");
+    assert_eq!(wanted.section, if kind == plx_data::browse::SecKind::Movie { 3 } else { 4 });
+    let mut pages = Dispatcher::<AppHost>::new();
+    let tab = if kind == plx_data::browse::SecKind::Movie { HomeTab::Movies } else { HomeTab::Shows };
+    nav_tab(&mut pages, &mut rig, tab, None, None);
+    rig.refresh_browse_directory();
+    let directory = rig.directory.view();
+    let current = &directory.sections()[directory.current().unwrap()];
+    assert_eq!((current.sid, current.key), (Some(wanted.sid), wanted.section),
+        "a cold tab press must restore the saved library even when the initial type matches");
+
+    // Once a tab has been visited, the current section is meaningful. Do not overwrite a
+    // same-kind selection with an older persisted preference (a write may still be pending).
+    let other = if kind == plx_data::browse::SecKind::Movie { 0 } else { 1 };
+    rig.browse_run(plx_data::stores::browse::BrowseCmd::SetCur(other));
+    rig.refresh_browse_directory();
+    nav_tab(&mut pages, &mut rig, tab, None, None);
+    rig.refresh_browse_directory();
+    assert_eq!(rig.directory.view().current(), Some(other), "the in-session choice stays selected");
+
+    // An explicitly visited non-favourite must also remain in place during the same run.
+    let unpinned = other + 2;
+    assert!(!rig.directory.view().sections()[unpinned].row.pinned);
+    rig.browse_run(plx_data::stores::browse::BrowseCmd::SetCur(unpinned));
+    rig.refresh_browse_directory();
+    nav_tab(&mut pages, &mut rig, tab, None, None);
+    rig.refresh_browse_directory();
+    assert_eq!(rig.directory.view().current(), Some(unpinned), "a same-kind visit is not reset to a favourite");
+
+    // A profile/session reset starts a new first entry, even though the Bridge is retained.
+    rig.browse_run(plx_data::stores::browse::BrowseCmd::Reset);
+    assert!(rig.mounter.library_kind.is_none());
+    assert!(rig.library_commands.is_empty());
+    {
+        let mut browse = rig.stores.browse.borrow_mut();
+        browse.seed_registered_table_for_test([own, shared]);
+        browse.append_section_for_test(0, 3, "Other films", plx_data::browse::SecKind::Movie);
+        browse.append_section_for_test(0, 4, "Other series", plx_data::browse::SecKind::Show);
+    }
+    rig.refresh_browse_directory();
+    let mut pages = Dispatcher::<AppHost>::new();
+    nav_tab(&mut pages, &mut rig, tab, None, None);
+    rig.refresh_browse_directory();
+    let directory = rig.directory.view();
+    let current = &directory.sections()[directory.current().unwrap()];
+    assert_eq!((current.sid, current.key), (Some(wanted.sid), wanted.section),
+        "reset must not carry the previous session's library intent into the new one");
+}
+
+#[test]
+fn a_cold_movies_tab_restores_the_saved_library_instead_of_the_first_movie_library() {
+    let _guard = plx_base::testlock::serial();
+    cold_tab_with_saved_library(plx_data::browse::SecKind::Movie);
+}
+
+#[test]
+fn a_cold_shows_tab_restores_the_saved_library() {
+    let _guard = plx_base::testlock::serial();
+    cold_tab_with_saved_library(plx_data::browse::SecKind::Show);
 }

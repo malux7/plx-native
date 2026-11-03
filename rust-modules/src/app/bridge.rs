@@ -888,14 +888,16 @@ impl Bridge {
     /// the dip brings up an empty page and the grid appears in one frame when the image is
     /// replaced. The target is the page's own (`DirectoryView::kind_address`, which its first tick
     /// sends too, so the second select is the same command on a store already there). A store
-    /// already on a library of this kind stays on it (the reader's last pick), as
-    /// `LibraryScreen::sync` keeps it. Not for a Library already on top: its `LibraryCmd::Enter` saves the outgoing
+    /// already on a library of this kind stays on it AFTER the first library intent (the reader's
+    /// last pick), as `LibraryScreen::sync` keeps it. Before any intent the store's current section
+    /// is only a discovery default, even when its kind matches: restore the profile's preference.
+    /// Not for a Library already on top: its `LibraryCmd::Enter` saves the outgoing
     /// section's cursor from the listing it is still showing, before it switches.
     pub(crate) fn aim_library(&mut self, kind: plx_data::browse::SecKind) {
         let target = {
             let directory = self.directory.view();
             let current = directory.current().map(|i| directory.sections()[i].kind);
-            directory.kind_address(kind).filter(|_| current != Some(kind))
+            directory.kind_address(kind).filter(|_| self.mounter.library_kind.is_none() || current != Some(kind))
         };
         if let Some(target) = target {
             self.browse_run(plx_data::stores::browse::BrowseCmd::Addressed { target,
@@ -1274,6 +1276,10 @@ impl Bridge {
     /// step that left its job on the outbox would read as a read in flight with nothing running.
     /// The step is handed `browse_session()`, read after the store observed its pin write.
     pub(crate) fn browse_run(&mut self, cmd: plx_data::stores::browse::BrowseCmd) -> bool {
+        if matches!(cmd, plx_data::stores::browse::BrowseCmd::Reset) {
+            self.mounter.library_kind = None;
+            self.library_commands.clear();
+        }
         super::adapters::stores::refill_client_keys(&mut self.client_keys);
         let session = self.browse_session();
         let changed = self.stores.browse_run(cmd, &self.client_keys, &session);
@@ -3695,8 +3701,8 @@ pub(crate) fn nav_tab(
         }
         HomeTab::Movies | HomeTab::Shows => {
             let kind = if tab == HomeTab::Movies { plx_data::browse::SecKind::Movie } else { plx_data::browse::SecKind::Show };
-            rig.enter_library(kind);
             if d.top_arg() != Some(&AppArg::Library) { rig.aim_library(kind); }
+            rig.enter_library(kind);
             AppArg::Library
         }
         HomeTab::Search => AppArg::Search,

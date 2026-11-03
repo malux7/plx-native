@@ -2113,6 +2113,8 @@ pub struct AppMounter {
     /// many episodes the chain runs for. That was `Origin::Unchanged` and a `set_origin` call;
     /// it is now the absence of a write.
     pub player_origin: Option<crate::player::Origin>,
+    /// Last requested library kind, retained until the Browse table resets. Before the first
+    /// request the store's current section is a discovery default, not a viewer's choice.
     pub library_kind: Option<plx_data::stores::browse::SecKind>,
     /// How long the NEXT player instance pins its transport for, in ms — `HUD_LINGER_MS` for an
     /// ordinary start and `HUD_HEADLESS_MS` for a capture run. It is a seed rather than a constant
