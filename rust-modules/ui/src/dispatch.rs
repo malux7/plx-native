@@ -2183,9 +2183,8 @@ where
                         return;
                     }
                 }
-                // A direction or OK pressed (DOWN edge) on a page the focus engine owns: the key the
-                // repeated-key signal watches. The player page and a keyboard-owned screen are not
-                // the engine's, so a seek or a typed letter is never a dead press.
+                // The shared bar owns its BACK policy before its underlying page. Resolve actual
+                // membership, so hidden chrome and modal/keyboard owners keep their own handlers.
                 if back && !self.input.keyboard && self.engine_page() {
                     let on_strip = self.owner_entry().filter(|entry| self.nav.instance_of(*entry) == Some(id))
                         .and_then(|entry| self.focus().filter(|key| key.entry == entry))
@@ -2201,6 +2200,9 @@ where
                         }
                     }
                 }
+                // A direction or OK pressed (DOWN edge) on a page the focus engine owns: the key the
+                // repeated-key signal watches. The player page and a keyboard-owned screen are not
+                // the engine's, so a seek or a typed letter is never a dead press.
                 let watched = match &ev {
                     ScreenEvent::Input(InputEvent { at, kind: InputKind::Key { key, edge: Edge::Down, .. }, .. })
                         if (Dir::of_key(*key).is_some() || *key == Key::Ok)

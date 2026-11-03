@@ -217,8 +217,9 @@ opens its page, waits for the load to land on the expected item, and fires that 
 Play only then — never blindly, because a failed fetch would otherwise play whatever page was open
 before. On any other shelf, a show or season card simply opens its page.
 
-**BACK** from the shelves returns focus to the hero row; BACK at the hero row is the ROOT press and
-shows the television's own Home screen, with the app still running (§5.9).
+**BACK** from the shelves returns focus to the hero's Play/Resume action. The next BACK focuses
+Home in the top bar; another BACK there shows the television's own Home, keeping the app running
+(§5.9). BACK from a secondary hero action first returns to Play/Resume.
 
 **Overscan.** The UI is authored at a fixed logical 1920×1080 with a 90 px horizontal margin
 (4.7%), inside LG's 5% overscan frame; nothing load-bearing is drawn outside it.
@@ -396,8 +397,8 @@ For a series, the page carries its seasons and episodes rather than a single act
 ### 5.9 The root press
 
 **BACK at a root shows the television's own Home screen, and the app keeps running.** Four roots,
-as of 2026-09-07: Home's own root, the who's-watching picker, the QR sign-in, and the first-run
-consent question's first stage.
+Home with its Home navigation control focused, the who's-watching picker, the QR sign-in, and
+the first-run consent question's first stage.
 
 **The fourth was the hard one, and it stayed open for a while for a reason worth keeping**: going
 to the LG Home neither answers nor dismisses the consent question, so nothing is stranded by it —

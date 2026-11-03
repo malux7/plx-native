@@ -42,7 +42,7 @@ fn named(arg: Option<&AppArg>) -> &'static str {
 
 /// What one BACK did: left focus in a region of the page, or left the page with a request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Out { Stay(Place), Leave(&'static str) }
+enum Out { Stay(Place), Leave(&'static str), HomeNav }
 
 /// The requests that END a page (the pump's labels start with them).
 const LEAVES: [&str; 3] = ["library:BackToHome", "content:Back", "watchlist:Back"];
@@ -63,7 +63,7 @@ struct Row {
     back_from_content: &'static [Out],
     /// …from the header row.
     back_from_header: &'static [Out],
-    /// …from the strip (every page: one press leaves).
+    /// …from the strip (every page: one press returns to Home's navigation control).
     back_from_nav: &'static [Out],
     /// The page on top once the page has left.
     leaves_to: AppArg,
@@ -74,30 +74,30 @@ struct Row {
 const ROWS: [Row; 4] = [
     Row {
         name: "Library", mount: movies_library, arrival: Place::Content, up_lands: Some("collections"), own_pill: TAB_KEY_MOVIES,
-        back_from_content: &[Out::Stay(Place::Content), Out::Stay(Place::Header), Out::Stay(Place::Nav), Out::Leave("library:BackToHome")],
-        back_from_header: &[Out::Stay(Place::Nav), Out::Leave("library:BackToHome")],
-        back_from_nav: &[Out::Leave("library:BackToHome")],
+        back_from_content: &[Out::Stay(Place::Content), Out::Stay(Place::Header), Out::Stay(Place::Nav), Out::HomeNav],
+        back_from_header: &[Out::Stay(Place::Nav), Out::HomeNav],
+        back_from_nav: &[Out::HomeNav],
         leaves_to: AppArg::Home, opener: None,
     },
     Row {
         name: "Collections", mount: collections, arrival: Place::Content, up_lands: Some("crumb"), own_pill: TAB_KEY_MOVIES,
         back_from_content: &[Out::Stay(Place::Content), Out::Leave("content:Back")],
         back_from_header: &[Out::Leave("content:Back")],
-        back_from_nav: &[Out::Leave("content:Back")],
+        back_from_nav: &[Out::HomeNav],
         leaves_to: AppArg::Library, opener: Some("collections"),
     },
     Row {
         name: "Recommended", mount: recommended, arrival: Place::Content, up_lands: Some("crumb"), own_pill: TAB_KEY_MOVIES,
         back_from_content: &[Out::Stay(Place::Content), Out::Leave("content:Back")],
         back_from_header: &[Out::Leave("content:Back")],
-        back_from_nav: &[Out::Leave("content:Back")],
+        back_from_nav: &[Out::HomeNav],
         leaves_to: AppArg::Library, opener: Some("recommended"),
     },
     Row {
         name: "Watchlist", mount: watchlist, arrival: Place::Content, up_lands: Some("sort"), own_pill: TAB_KEY_WATCHLIST,
         back_from_content: &[Out::Stay(Place::Content), Out::Leave("watchlist:Back")],
         back_from_header: &[Out::Leave("watchlist:Back")],
-        back_from_nav: &[Out::Leave("watchlist:Back")],
+        back_from_nav: &[Out::HomeNav],
         leaves_to: AppArg::Home, opener: None,
     },
 ];
@@ -280,6 +280,7 @@ impl Fails {
 fn outcome(r: &Rig, performed: &[String]) -> Out {
     match performed.iter().find_map(|label| LEAVES.iter().find(|leave| label.starts_with(**leave))) {
         Some(leave) => Out::Leave(leave),
+        None if r.on(&AppArg::Home) && r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME) => Out::HomeNav,
         None => match r.region() {
             Some(place) => Out::Stay(place),
             None => Out::Stay(Place::Content),
@@ -294,9 +295,14 @@ fn back_sequence(r: &mut Rig, row: &Row, what: &str, expected: &[Out], f: &mut F
         let performed = r.press(Key::Back);
         let out = outcome(r, &performed);
         seen.push(out);
-        if matches!(out, Out::Leave(_)) { break; }
+        if matches!(out, Out::Leave(_) | Out::HomeNav) { break; }
     }
     f.check(seen == expected, || format!("{}: BACK {what}: expected {expected:?}, saw {seen:?}", row.name));
+    if expected.last() == Some(&Out::HomeNav) {
+        f.check(r.on(&AppArg::Home) && r.elem() == Some(plx_ui::widgets::TAB_KEY_HOME),
+            || format!("{}: BACK {what} must end on Home's Home control", row.name));
+        f.check(r.bridge.take_reqs().is_empty(), || format!("{}: BACK {what} must not leave for the platform", row.name));
+    }
     if let Some(Out::Leave(_)) = expected.last() {
         r.frames(80);
         f.check(r.on(&row.leaves_to), || format!("{}: BACK {what} should end on {}, the top page is {}", row.name, named(Some(&row.leaves_to)), named(r.d.top_arg())));
