@@ -1,9 +1,11 @@
-//! Immediate asymmetric D-pad taps and FF/REW taps, sharing one accumulated seek path.
+//! Batched asymmetric D-pad taps and immediate FF/REW taps share one requested-target owner.
 use super::*;
-use plx_plex::plex::session::InstantDpadSeeking;
+
+const DPAD_QUIET_MS: u32 = 500;
+const DPAD_LINGER_MS: u32 = 3_000;
 
 /// Dismissed immediate seeks stay bare through the first new picture. Ordinary buffering and
-/// failures retain the shared read-out policy, independently of the D-pad preference.
+/// failures retain the shared read-out policy for immediate transport-key jumps.
 pub(super) fn seek_stays_hidden(ps: &plx_media::route::PlaybackSession, dismissed: bool) -> bool {
     use plx_media::player::{self, PlaybackState};
     if !dismissed { return false; }
@@ -34,12 +36,29 @@ impl PlayerScreen {
         }
     }
 
-    /// Short D-pad presses have fixed, asymmetric distances; held scrubbing keeps its tuning.
-    pub(super) fn commit_dpad_jump<H: AppLike>(&mut self, ps: &plx_media::route::PlaybackSession,
-        forward: bool, now: u32, fx: &mut Effects<'_, H>) {
+    /// A short tap updates the preview immediately, but never starts a load. Later taps share
+    /// one requested target; the Tick commits it after 500 ms with no fresh press in progress.
+    pub(super) fn queue_dpad_jump(&mut self, ps: &plx_media::route::PlaybackSession,
+        forward: bool, now: u32) {
         let step = if forward { 30_000_000_000 } else { -10_000_000_000 };
-        let keep_hud = self.hud.visible_at_press;
-        if let Some(target) = self.jump_by(ps, step, keep_hud, now) {
+        if let Some(target) = self.jump_by(ps, step, true, now) {
+            self.seek_burst.defer();
+            self.scrub.ns = target;
+            self.hud.show_for(now, DPAD_LINGER_MS);
+            self.publish();
+        }
+    }
+
+    pub(super) fn step_dpad_jump<H: AppLike>(&mut self, now: u32, fx: &mut Effects<'_, H>) {
+        let Some(target) = self.seek_burst.pending() else { return; };
+        // A press arriving just before the deadline must first resolve into a tap or hold.
+        if self.transport_tap { return; }
+        if self.hud.dismissed || self.scrub.drag || self.scrub.ns != target {
+            self.seek_burst.reset();
+            return;
+        }
+        if let Some(target) = self.seek_burst.take_due(now, DPAD_QUIET_MS) {
+            self.scrub.cancel();
             Self::ask(fx, PlayerReq::CommitSeek(target));
         }
     }
@@ -127,12 +146,8 @@ impl PlayerScreen {
             return true;
         }
         if edge == Edge::Down { self.drop_transport_tap(); }
-        if plx_media::route::instant_dpad_seeking() != InstantDpadSeeking::On || self.hud.visible_at_press {
-            return false;
-        }
-        if edge == Edge::Down { self.commit_dpad_jump(ps, forward, now, fx); }
-        // The opt-in D-pad path is one immediate jump per fresh press, without a held scrub.
-        true
+        // All short D-pad taps use the same visible preview and quiet-period commit.
+        false
     }
 }
 
@@ -229,6 +244,48 @@ mod tests {
             .collect()
     }
 
+    fn tick(page: &mut PlayerScreen, now: u32) -> Vec<PlayerReq> {
+        let cx = Cx { views: (), tick: Tick { ms: now, dt_us: 16_000 },
+            measure: &FixtureMeasure, focus: Default::default(), press: Default::default(),
+            owner: InputOwner::Entry(EntryId(9)) };
+        let mut out = Vec::new();
+        let mut present = plx_machine::present::Present::new();
+        page.step(&ScreenEvent::<TestHost>::Tick(cx.tick), &cx,
+            &mut Effects::new(&mut out, MachineId::Instance(InstanceId(3)), &mut present));
+        out.into_iter().filter_map(|e| match e.fx {
+            Fx::App(AppFx::Player(req)) => Some(req), _ => None,
+        }).collect()
+    }
+
+    fn tap(page: &mut PlayerScreen, sym: u32, at: u32) -> i64 {
+        assert!(key(page, sym, Edge::Down, at).is_empty());
+        assert!(key(page, sym, Edge::Up, at + 40).is_empty());
+        page.scrub.ns
+    }
+
+    #[test]
+    fn short_dpad_burst_seeks_once_after_500ms_and_keeps_hud_for_three_seconds() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        plx_media::route::restore_instant_dpad_seeking(InstantDpadSeeking::Off);
+        for visible in [false, true] {
+            let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+            page.hud.visible_at_press = visible;
+            for (at, want) in [(1_000, 70_000_000_000), (1_200, 97_000_000_000)] {
+                assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Down, at).is_empty());
+                assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Up, at + 40).is_empty());
+                assert_eq!(page.scrub.ns, want);
+                assert!(!page.hud.dismissed);
+            }
+            assert!(tick(&mut page, 1_539).is_empty(), "the first tap's deadline is retired");
+            assert!(tick(&mut page, 1_739).is_empty());
+            assert_eq!(tick(&mut page, 1_740), vec![PlayerReq::CommitSeek(97_000_000_000)]);
+            assert!(tick(&mut page, 2_000).is_empty(), "one seek only");
+            assert_eq!(page.hud.until, 4_240, "linger starts at the last tap, not its seek");
+            assert!(!page.hud.dismissed);
+        }
+    }
+
     #[test]
     fn dpad_short_taps_commit_asymmetric_accumulated_targets_without_ok() {
         let _g = plx_base::testlock::serial();
@@ -243,11 +300,52 @@ mod tests {
                 (consts::SDLK_LEFT, 1_400, 87_000_000_000),
             ] {
                 assert!(key(&mut page, sym, Edge::Down, at).is_empty());
-                assert_eq!(key(&mut page, sym, Edge::Up, at + 40),
-                    vec![PlayerReq::CommitSeek(target)]);
-                assert!(!page.scrub.is_live());
+                assert!(key(&mut page, sym, Edge::Up, at + 40).is_empty());
+                assert_eq!(page.scrub.ns, target);
             }
+            assert_eq!(tick(&mut page, 1_940), vec![PlayerReq::CommitSeek(87_000_000_000)]);
         }
+    }
+
+    #[test]
+    fn pressing_again_keeps_the_displayed_target_steady_until_the_short_release() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+        page.hud.visible_at_press = true;
+        tap(&mut page, consts::SDLK_RIGHT, 1_000);
+        assert_eq!(page.published_scrub(), 70_000_000_000);
+        key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_200);
+        assert_eq!(page.published_scrub(), 70_000_000_000, "do not flash the hold's provisional 10s hop");
+        key(&mut page, consts::SDLK_RIGHT, Edge::Up, 1_240);
+        assert_eq!(page.published_scrub(), 97_000_000_000);
+    }
+
+    #[test]
+    fn a_new_press_suspends_the_old_deadline_and_a_hold_never_auto_commits() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+        page.hud.visible_at_press = true;
+        tap(&mut page, consts::SDLK_RIGHT, 1_000);
+        assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_500).is_empty());
+        assert!(tick(&mut page, 1_600).is_empty(), "no seek while the next key is down");
+        assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Repeat, 2_000).is_empty());
+        assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Up, 2_020).is_empty());
+        assert!(tick(&mut page, 2_700).is_empty(), "a hold retains confirmation");
+        let target = page.scrub.ns;
+        assert_eq!(key(&mut page, consts::SDLK_RETURN, Edge::Down, 2_800), vec![PlayerReq::SeekTo(target)]);
+    }
+
+    #[test]
+    fn back_cancels_a_queued_short_burst_without_a_late_seek() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+        tap(&mut page, consts::SDLK_RIGHT, 1_000);
+        key(&mut page, consts::WCODE_BACK, Edge::Down, 1_200);
+        assert!(tick(&mut page, 2_000).is_empty());
+        assert!(page.seek_burst.pending().is_none());
     }
 
     #[test]
@@ -366,113 +464,62 @@ mod tests {
     fn seek_jump_rapid_taps_accumulate_past_an_earlier_keyframe_landing() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
-        page.hud.dismissed = true;
-        // A +30s request lands on the preceding keyframe at 40s again. A second tap must
-        // advance the REQUESTED position, even after the player reports Playing at that frame.
         for (sym, at, target) in [
             (consts::SDLK_RIGHT, 1_000, 70_000_000_000),
             (consts::SDLK_RIGHT, 1_300, 97_000_000_000),
             (consts::SDLK_LEFT, 1_600, 87_000_000_000),
         ] {
-            assert_eq!(
-                key(&mut page, sym, Edge::Down, at),
-                vec![PlayerReq::CommitSeek(target)]
-            );
-            assert!(key(&mut page, sym, Edge::Up, at + 20).is_empty());
-            plx_media::player::SHARED
-                .seek_display_ns
-                .store(target, Relaxed);
-            plx_media::player::SHARED
-                .playpos_ns
-                .store(40_000_000_000, Relaxed);
+            assert_eq!(tap(&mut page, sym, at), target);
+            // The real playhead has not followed the preview; later taps retain requested travel.
+            plx_media::player::SHARED.playpos_ns.store(40_000_000_000, Relaxed);
         }
+        assert_eq!(tick(&mut page, 2_140), vec![PlayerReq::CommitSeek(87_000_000_000)]);
     }
 
     #[test]
     fn seek_jump_burst_expires_and_other_controls_clear_it() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
-        let right = consts::SDLK_RIGHT;
-        assert_eq!(
-            key(&mut page, right, Edge::Down, 1_000),
-            vec![PlayerReq::CommitSeek(70_000_000_000)]
-        );
-        plx_media::player::SHARED
-            .playpos_ns
-            .store(43_000_000_000, Relaxed);
-        assert_eq!(
-            key(&mut page, right, Edge::Down, 2_501),
-            vec![PlayerReq::CommitSeek(73_000_000_000)]
-        );
-        key(&mut page, consts::SDLK_UP, Edge::Down, 2_550);
-        // UP raises or moves the HUD; simulate dismissing it again without moving the playhead.
-        page.hud.visible_at_press = false;
-        assert_eq!(
-            key(&mut page, right, Edge::Down, 2_600),
-            vec![PlayerReq::CommitSeek(73_000_000_000)]
-        );
-        page.hud.visible_at_press = true;
-        key(&mut page, consts::SDLK_DOWN, Edge::Down, 2_650);
-        page.scrub.cancel();
-        page.hud.visible_at_press = false;
-        assert_eq!(
-            key(&mut page, right, Edge::Down, 2_700),
-            vec![PlayerReq::CommitSeek(73_000_000_000)]
-        );
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 1_000), 70_000_000_000);
+        assert_eq!(tick(&mut page, 1_540), vec![PlayerReq::CommitSeek(70_000_000_000)]);
+        plx_media::player::SHARED.playpos_ns.store(43_000_000_000, Relaxed);
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 2_601), 73_000_000_000);
+        key(&mut page, consts::SDLK_UP, Edge::Down, 2_700);
+        assert!(tick(&mut page, 4_000).is_empty(), "another control cancels automatic seeking");
     }
 
     #[test]
     fn seek_jump_burst_survives_a_seek_reload_but_not_an_item_change() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
-        assert_eq!(
-            key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_000),
-            vec![PlayerReq::CommitSeek(70_000_000_000)]
-        );
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 1_000), 70_000_000_000);
         page.transport_reset(true);
-        assert_eq!(
-            key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_100),
-            vec![PlayerReq::CommitSeek(97_000_000_000)]
-        );
+        assert_eq!(page.scrub.ns, 70_000_000_000);
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 1_200), 97_000_000_000);
         page.transport_reset(false);
-        assert_eq!(
-            key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_200),
-            vec![PlayerReq::CommitSeek(70_000_000_000)]
-        );
+        assert!(tick(&mut page, 2_000).is_empty(), "no queued seek survives an item change");
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 2_100), 70_000_000_000);
+        assert_eq!(tick(&mut page, 2_640), vec![PlayerReq::CommitSeek(70_000_000_000)]);
     }
 
     #[test]
-    fn seek_jump_hidden_press_seeks_immediately_without_raising_the_hud() {
+    fn seek_jump_hidden_tap_shows_a_stable_preview_and_lingers_after_the_commit() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
-        for (sym, target) in [
-            (consts::SDLK_RIGHT, 70_000_000_000),
-            (consts::SDLK_LEFT, 30_000_000_000),
-        ] {
+        for (sym, target) in [(consts::SDLK_RIGHT, 70_000_000_000), (consts::SDLK_LEFT, 30_000_000_000)] {
             let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
             page.hud.dismissed = true;
-            assert_eq!(
-                key(&mut page, sym, Edge::Down, 1_000),
-                vec![PlayerReq::CommitSeek(target)]
-            );
-            assert_eq!(page.scrub.ns, -1, "no preview is waiting for confirmation");
-            assert_eq!(
-                page.hud.until, 0,
-                "the hidden seek does not extend the HUD timer"
-            );
-            assert!(page.hud.dismissed);
-            assert!(key(&mut page, sym, Edge::Up, 1_020).is_empty());
+            assert_eq!(tap(&mut page, sym, 1_000), target);
+            assert!(!page.hud.dismissed);
+            assert_eq!(page.hud.until, 4_040);
+            assert_eq!(tick(&mut page, 1_540), vec![PlayerReq::CommitSeek(target)]);
+            assert_eq!(page.scrub.ns, -1);
+            assert_eq!(page.hud.until, 4_040, "committing does not restart the linger");
+            assert!(page.hud.visible(&plx_media::route::PlaybackSession::IDLE, 4_039, false));
+            assert!(!page.hud.visible(&plx_media::route::PlaybackSession::IDLE, 4_040, false));
         }
     }
 
@@ -480,14 +527,10 @@ mod tests {
     fn seek_jump_visible_short_tap_commits_without_confirmation() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
         page.hud.visible_at_press = true;
-        assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_000).is_empty());
-        assert_eq!(page.scrub.ns, 50_000_000_000);
-        assert_eq!(key(&mut page, consts::SDLK_RIGHT, Edge::Up, 1_020),
-            vec![PlayerReq::CommitSeek(70_000_000_000)]);
+        assert_eq!(tap(&mut page, consts::SDLK_RIGHT, 1_000), 70_000_000_000);
+        assert_eq!(tick(&mut page, 1_540), vec![PlayerReq::CommitSeek(70_000_000_000)]);
         assert!(!page.scrub.is_live());
     }
 
@@ -528,22 +571,16 @@ mod tests {
     }
 
     #[test]
-    fn seek_jump_hidden_jumps_clamp_and_repeats_do_not_create_a_scrub() {
+    fn seek_jump_short_taps_clamp_independently_of_the_held_preview_interval() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
-        let _interval =
-            player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds60);
+        let _interval = player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds60);
         for (sym, target) in [(consts::SDLK_RIGHT, 97_000_000_000), (consts::SDLK_LEFT, 0)] {
             let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
             plx_media::player::SHARED.playpos_ns.store(
                 if sym == consts::SDLK_RIGHT { 95_000_000_000 } else { 5_000_000_000 }, Relaxed);
-            assert_eq!(
-                key(&mut page, sym, Edge::Down, 1_000),
-                vec![PlayerReq::CommitSeek(target)]
-            );
-            assert!(key(&mut page, sym, Edge::Repeat, 1_050).is_empty());
-            assert!(key(&mut page, sym, Edge::Up, 1_080).is_empty());
-            assert!(!page.scrub.is_live());
+            assert_eq!(tap(&mut page, sym, 1_000), target);
+            assert_eq!(tick(&mut page, 1_540), vec![PlayerReq::CommitSeek(target)]);
         }
     }
 

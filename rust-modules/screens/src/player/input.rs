@@ -351,6 +351,14 @@ impl HudState {
         }
     }
 
+    /// A viewer's timed gesture replaces the previous ordinary linger, rather than retaining
+    /// an older, longer deadline. Unlike `extend`, this deliberately starts a new visible window.
+    pub fn show_for(&mut self, now: u32, ms: u32) {
+        self.until = now.saturating_add(ms).max(1);
+        self.dismissed = false;
+        self.exit_armed = false;
+    }
+
     /// A fresh key the app BINDS has arrived: record what the transport LOOKED like to the user,
     /// then clear the dismissal it may have been carrying.
     ///

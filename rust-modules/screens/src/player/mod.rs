@@ -70,7 +70,7 @@ pub const WORD: &str = "player";
 pub const SHAPE: &str =
     "PlayerScreen{hud:{focus:i32,btn:i32,tab:i32,until:u32,dismissed:bool,visible_at_press:bool,\
      exit_armed:bool,back_leaves_at_press:bool,offer:Option<(u32,i64)>,was_standin:bool},scrub:{dir:i32,hold:bool,reveal:bool,drag:bool,\
-     ns:i64},seek_burst:Option<(i64,u32)>,transport_tap:bool,origin:Option<u32>,repair_alert:{open:bool,confirm:bool,scroll:u32}}";
+     ns:i64},seek_burst:Option<(i64,u32)>,seek_deferred:bool,transport_tap:bool,origin:Option<u32>,repair_alert:{open:bool,confirm:bool,scroll:u32}}";
 
 /// **The page this playback was launched from**, as the container's own identity.
 ///
@@ -237,6 +237,9 @@ impl PlayerScreen {
     /// The scrub target [`publish`](Self::publish) writes to `TX.scrub_ns`, and so what the draw's
     /// `HudModel::scrub_ns` reads: -1 while nothing has travelled.
     fn published_scrub(&self) -> i64 {
+        // A key still deciding between tap and hold must not flash the hold's provisional hop.
+        // Keep the queued target on screen; the first hardware repeat publishes the held preview.
+        if self.transport_tap { return self.seek_burst.pending().unwrap_or(-1); }
         if self.scrub.reveal { -1 } else { self.scrub.ns }
     }
 
@@ -254,6 +257,10 @@ impl PlayerScreen {
     pub fn transport_reset(&mut self, for_reload: bool) {
         self.transport_tap = false;
         self.scrub.cancel();
+        if for_reload {
+            // A previous load settling must not erase a newer burst queued by the viewer.
+            if let Some(target) = self.seek_burst.pending() { self.scrub.ns = target; }
+        }
         self.row.reset_title();
         if !for_reload {
             self.seek_burst.reset();
@@ -616,10 +623,10 @@ impl<H: PlayerLike + crate::registry::MetadataLike> Machine<H> for PlayerScreen 
     /// ramp it guards, and the screen states its INTENT while the pump keeps a pause across a seek,
     /// which is what a request is for.
     ///
-    /// **Short D-pad taps seek +30s / −10s on release without OK.** The first hardware repeat
-    /// instead leaves the existing accelerating hold in control, with its target waiting for OK.
-    /// FF/REW taps keep their configured interval. With instant D-pad seeking enabled, a hidden
-    /// HUD still commits on press. Held-key release, the lost-keyup net and timers seek nothing:
+    /// **Short D-pad taps preview +30s / −10s, then commit once after 500 ms of quiet.**
+    /// Their HUD stays visible for 3 seconds from the last release. A hardware repeat instead
+    /// leaves the existing accelerating hold in control, with its target waiting for OK.
+    /// FF/REW taps retain their configured immediate jump. Held-key release and the lost-keyup net seek nothing:
     /// the film plays underneath the preview with its transport held up
     /// ([`Self::hold_the_transport_for_a_target`]).
     /// **OK, PLAY and PLAY-PAUSE take the target** ([`Self::take_target`]): one
@@ -798,9 +805,14 @@ impl<H: PlayerLike + crate::registry::MetadataLike> Machine<H> for PlayerScreen 
                 self.up_next.tick(self.slot, tick.ms);
                 // The scrub gesture's whole per-frame half — `app/run.rs`'s old
                 // per-loop-iteration block, now on this screen's own Tick: the continuous
-                // accelerating advance with its lost-keyup net. Neither it nor anything else on
-                // this Tick seeks: a key target waits for OK.
+                // accelerating advance with its lost-keyup net never commits a held target.
+                // Only a queued short-tap burst may commit on its quiet-period deadline.
                 self.step_scrub_hold(tick.ms);
+                if failed && self.seek_burst.pending().is_some() {
+                    self.scrub.cancel();
+                    self.end_jump_gesture();
+                }
+                self.step_dpad_jump(tick.ms, fx);
                 self.hold_the_transport_for_a_target(tick.ms);
                 self.publish();
                 Handled::Yes
@@ -1271,7 +1283,7 @@ impl PlayerScreen {
                         }
                         self.key_scrub_fresh(ps, key, now, fx, meta);
                         // Reuse the transport tap/hold discriminator: only a fresh, unengaged
-                        // scrub can become a short D-pad jump. A bounced hold stays a hold.
+                        // scrub can become a queued short D-pad jump. A bounced hold stays a hold.
                         self.transport_tap = self.scrub.key.dir != 0 && !self.scrub.key.engaged;
                     }
                     Edge::Repeat => {
@@ -1281,7 +1293,7 @@ impl PlayerScreen {
                     Edge::Up => {
                         if self.transport_tap {
                             self.transport_tap = false;
-                            self.commit_dpad_jump(ps, matches!(key, Key::Right { .. }), now, fx);
+                            self.queue_dpad_jump(ps, matches!(key, Key::Right { .. }), now);
                         } else {
                             self.key_scrub_release(now);
                         }
@@ -1451,7 +1463,7 @@ impl PlayerScreen {
     /// that was dismissed anyway (by whichever path) takes the target with it — cancelled, never
     /// committed. A reveal (a press spent raising the transport, `Scrub::reveal`) has no target.
     fn hold_the_transport_for_a_target(&mut self, now: u32) {
-        if !self.scrub.is_live() || self.scrub.reveal {
+        if !self.scrub.is_live() || self.scrub.reveal || self.seek_burst.pending().is_some() {
             return;
         }
         if self.hud.dismissed {
@@ -1540,7 +1552,7 @@ impl PlayerScreen {
     }
 
     /// Arm the unchanged held-scrub preview. The key dispatcher distinguishes a short release
-    /// (an immediate asymmetric jump) from a repeated hold (a target waiting for OK).
+    /// (a batched asymmetric jump) from a repeated hold (a target waiting for OK).
     fn key_scrub_fresh<H: AppLike>(
         &mut self,
         ps: &plx_media::route::PlaybackSession,
@@ -2342,7 +2354,7 @@ impl LogicalState for PlayerScreen {
         c.option(self.seek_burst.snapshot().as_ref(), |c, (target, at)| {
             c.u64(*target as u64).u32(*at);
         });
-        c.bool(self.transport_tap);
+        c.bool(self.seek_burst.pending().is_some()).bool(self.transport_tap);
         c.option(self.origin.as_ref(), |c, o| {
             c.u32(o.entry.0);
         });
@@ -3863,10 +3875,10 @@ mod step_ladder_tests {
 /// state — `PlayerScreen::scrub` — at the same time. Each case below is one of the three
 /// regressions that produced, watched RED against `2790f47a` before the retirement commit:
 ///
-/// 1. [`one_right_tap_seeks_on_release_without_a_second_confirmation`] — the step's `Jump` arm committed
+/// 1. [`one_right_tap_seeks_after_the_quiet_period_without_confirmation`] — the step's `Jump` arm committed
 ///    on the PRESS while `app/input.rs`'s key-up arm armed a tap commit on the same gesture and
 ///    `app/run.rs`'s per-frame block committed it a second time. (Both committers are gone with
-///    the single screen owner: a short tap commits once on release; a held target waits for OK.)
+///    the single screen owner: a short burst commits once after quiet; a held target waits for OK.)
 /// 2. [`a_scrub_seek_taken_while_paused_holds_the_pause`] — the screen asked for
 ///    [`PlayerReq::SeekTo`], whose loop arm resumes a paused film; a pointer drag's commit must not.
 /// 3. [`a_click_on_the_scrubber_seeks_and_a_drag_previews_before_it`] — the scrubber's registered
@@ -4019,17 +4031,17 @@ mod scrub_ownership_tests {
         (r.x + r.w * frac, r.y + r.h * 0.5)
     }
 
-    /// A short tap commits once on release; later timer ticks never duplicate its seek.
+    /// A short tap commits once after its quiet period; later timer ticks never duplicate it.
     #[test]
-    fn one_right_tap_seeks_on_release_without_a_second_confirmation() {
+    fn one_right_tap_seeks_after_the_quiet_period_without_confirmation() {
         let _g = plx_base::testlock::serial();
         let _f = Fixture::new(false);
         let mut page = page_on_the_bar();
         assert!(seeks(key(&mut page, SDLK_RIGHT, Edge::Down, 1_000).1).is_empty());
-        assert_eq!(seeks(key(&mut page, SDLK_RIGHT, Edge::Up, 1_020).1),
-            vec![PlayerReq::CommitSeek(30_000_000_000)]);
+        assert!(seeks(key(&mut page, SDLK_RIGHT, Edge::Up, 1_020).1).is_empty());
+        assert_eq!(seeks(tick(&mut page, 1_520).1), vec![PlayerReq::CommitSeek(30_000_000_000)]);
         assert_eq!(page.scrub.ns, -1);
-        for t in [1_320, 3_000, 60_000] {
+        for t in [1_620, 3_000, 60_000] {
             assert!(seeks(tick(&mut page, t).1).is_empty(), "no timer duplicates the seek");
         }
     }
@@ -4423,7 +4435,9 @@ mod scrub_ownership_tests {
         // A short release commits the jump, but never publishes a held-scrub preview.
         let (_, reqs) = key(&mut page, SDLK_RIGHT, Edge::Up, 1_320);
         page.publish();
-        assert_eq!(seeks(reqs), vec![PlayerReq::CommitSeek(80 * S)]);
+        assert!(seeks(reqs).is_empty());
+        assert_eq!(plx_media::player::TX.scrub_ns.load(Relaxed), 80 * S);
+        assert_eq!(seeks(tick(&mut page, 1_820).1), vec![PlayerReq::CommitSeek(80 * S)]);
         assert_eq!(plx_media::player::TX.scrub_ns.load(Relaxed), -1);
 
         // …whereas a hold that really TRAVELS is a scrub, and is published as one

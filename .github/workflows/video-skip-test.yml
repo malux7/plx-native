@@ -1,16 +1,16 @@
-name: Video skip IPK
+name: Batched video skip IPK
 
-# Test asymmetric short video skips on its own branch using the standard ARM/package gates.
+# Test batched asymmetric short video skips on its own branch using the standard ARM/package gates.
 # This produces an installable Nightly artifact without publishing a release.
 on:
   push:
-    branches: [feat-asymmetric-video-skip]
+    branches: [feat-batched-video-skip]
 
 permissions:
   contents: read
 
 concurrency:
-  group: video-skip-${{ github.ref }}
+  group: batched-video-skip-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       flavor: nightly
       nightly-date: ${{ needs.date.outputs.value }}
       telemetry: development
-      artifact: video-skip-ipk
+      artifact: batched-video-skip-ipk
       source-asset: true
       fwcompat: true
       homebrew-manifest: true

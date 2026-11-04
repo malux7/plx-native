@@ -697,9 +697,8 @@ pub fn scrub_speed(held_ms: u32) -> f32 {
     (SCRUB_BASE * (1u32 << doublings) as f32).min(SCRUB_MAX)
 }
 // tap released → commit after this (further taps accumulate into one Load/reload). The TRAILER
-// transport's debounce (`screens::detail::trailer`); the player's D-pad has none — its keys only
-// move a target that OK confirms. Immediate tap jumps use SeekBurst; it
-// retains requested travel without delaying the commit.
+// transport's debounce (`screens::detail::trailer`). The player's D-pad batches through
+// SeekBurst with its own 500 ms quiet period; FF/REW taps remain immediate.
 pub const TAP_COMMIT_MS: u32 = 450;
 pub const SCRUB_LOST_MS: u32 = 400; // holding but no repeat this long → lost keyup (the trailer commits, the player lets go)
 /// How long a key-up of a HELD scrub waits before it counts as the release. The remote's key

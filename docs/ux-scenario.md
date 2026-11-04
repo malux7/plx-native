@@ -614,26 +614,26 @@ front of QA:
 
 ### 6.6 Seeking
 
-Short D-pad taps seek immediately without OK: **RIGHT adds 30 seconds; LEFT subtracts
-10 seconds**. Rapid taps accumulate their requested targets even while a preceding seek is
-landing on a keyframe. A short tap is committed on key release so a hold can retain its existing
-behavior without first issuing an unwanted seek. The hidden-HUD instant-seeking option still
-commits on key-down and keeps the HUD hidden.
+Short D-pad taps update the target immediately: **RIGHT adds 30 seconds; LEFT subtracts
+10 seconds**. Rapid taps accumulate into one preview. **After 500 ms without another short tap,
+one seek is committed automatically, without OK.** A key still held at that deadline postpones
+the decision; a hardware repeat transfers ownership to the unchanged held-scrub gesture.
 
-- **With the HUD hidden, a short LEFT/RIGHT tap now also seeks.** Raising the transport on
-  key-down still arms the existing hold; releasing without a hardware repeat commits the tap.
-- **With the HUD up and the scrubber focused, a short tap seeks automatically.** The fixed
-  +30/−10 second tap distances are independent of the configured Skip interval. LEFT/RIGHT on
-  buttons, tabs and chapter cards still navigate those controls.
+- **The HUD stays visible throughout the burst and for 3 seconds from the last short release.**
+  Committing the seek does not hide the HUD or restart its linger. Ordinary buffering or a paused
+  video retains the existing visibility rules. The previous hidden-HUD instant-seeking preference
+  is no longer offered: all short D-pad gestures use this batched behavior.
+- **The fixed +30/−10 second short-tap distances are independent of Skip interval.** LEFT/RIGHT
+  on buttons, tabs and chapter cards still navigate those controls.
 - **Holding retains the existing continuous scrub and confirmation behavior.** The initial
   preview hop still uses the configured Skip interval; the continuous ramp accelerates from
   60× playback speed, doubling every second up to 480×. Releasing a travelled hold leaves the
   target pending for OK. The existing bounce debounce and lost-key-up watchdog are unchanged.
 - **A held scrub seeks only when confirmed.** Releasing the hold or losing its key-up does not
-  seek. A later hold continues from the pending target; a short tap starts an immediate relative
+  seek. A later hold continues from the pending target; a short tap starts a queued relative
   jump from the current playback position instead.
-- **The film keeps playing underneath** while a target is pending, and the HUD stays up for as long
-  as it is (the 4.5 s linger never takes it away, and never commits it).
+- **The film keeps playing underneath** while a target is pending. A held target keeps the HUD up
+  until confirmation or cancellation; a short-tap preview uses the 500 ms commit and 3 s linger above.
 - **OK, Play or Play-Pause confirms the target** — one seek to it, and the film plays on from there (a
   paused film resumes). Pause leaves the target alone. **BACK drops it** (below), as does leaving the
   scrubber with UP/DOWN, and so does anything else that takes the page from the scrubber — a panel

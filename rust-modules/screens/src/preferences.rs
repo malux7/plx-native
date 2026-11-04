@@ -461,7 +461,9 @@ impl PreferencesPage {
 /// Which fields `kind`'s list shows: Audio & Subtitles has none until a snapshot has loaded.
 fn fields_of(inputs: &FieldListInputs<'_>) -> &'static [PickerKind] {
     match inputs.kind {
-        Kind::Playback => &[PickerKind::Quality, PickerKind::DirectPlay, PickerKind::SubtitleSize, PickerKind::SubtitlePosition, PickerKind::HdrOverlay, PickerKind::NextEpisode, PickerKind::DeckPress, PickerKind::SkipInterval, PickerKind::InstantDpadSeeking, PickerKind::DolbyVision],
+        // Short D-pad taps now always batch behind a visible preview. The old instant-hidden
+        // preference remains readable for storage compatibility but is no longer offered.
+        Kind::Playback => &[PickerKind::Quality, PickerKind::DirectPlay, PickerKind::SubtitleSize, PickerKind::SubtitlePosition, PickerKind::HdrOverlay, PickerKind::NextEpisode, PickerKind::DeckPress, PickerKind::SkipInterval, PickerKind::DolbyVision],
         Kind::AudioSubtitles if inputs.prefs.is_some() => &[PickerKind::AudioLanguage, PickerKind::SubtitleMode, PickerKind::SubtitleLanguage, PickerKind::ForcedSubtitles],
         _ => &[],
     }

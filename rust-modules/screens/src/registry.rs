@@ -2686,8 +2686,8 @@ pub const SCREEN_SHAPES: &[&str] = &[
 // root, 1 Quality, 2 Speed) where it carried `More(quality:bool)`, so the Speed page can be
 // addressed. One bump; the three replay fixtures were re-recorded against it; the previous pin was
 // 0x9425_f33f_3f53_6aa5.
-// Exit confirmation is a new modal argument and logical screen shape.
-const SCREEN_SHAPES_PIN: u64 = 0x863be639ba95e691;
+// Deferred D-pad bursts add their pending-commit flag to the player logical state.
+const SCREEN_SHAPES_PIN: u64 = 0xc53fcdf141e80f12;
 
 #[cfg(test)]
 mod arg_tests {

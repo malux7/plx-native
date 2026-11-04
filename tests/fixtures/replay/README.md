@@ -608,3 +608,9 @@ Linux offscreen EGL now uses the existing host frame pacer, since it cannot hono
 vsync; this keeps captures within the unchanged decoded-record budget. At 960x540 the anchors
 contain 302, 796 and 662 frames. All six Targets/Resolve replays completed with every difference
 counter zero. These are simulator results, not TV performance evidence.
+
+The batched video-skip change adds the player's deferred-commit flag to its logical state
+and retires the obsolete hidden-HUD instant-seek row from Playback settings. The three anchors
+were freshly recorded through `tests/focusfp.sh --rec --only 1,6,12` against the synthetic local
+Plex fixture, then installed with `plxnative-rec rerecord` (anchor flags preserved). Their state
+fingerprint is `13267638873979862461`. These are simulator recordings, not TV playback evidence.
