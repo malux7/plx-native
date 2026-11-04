@@ -614,26 +614,24 @@ front of QA:
 
 ### 6.6 Seeking
 
-Seeking is a **click-to-confirm** gesture, not one immediate jump per press — and the same one
-whether the film is playing or paused. The remote's keys only move a **target**; the film moves
-when the viewer says so.
+Short D-pad taps seek immediately without OK: **RIGHT adds 30 seconds; LEFT subtracts
+10 seconds**. Rapid taps accumulate their requested targets even while a preceding seek is
+landing on a keyframe. A short tap is committed on key release so a hold can retain its existing
+behavior without first issuing an unwanted seek. The hidden-HUD instant-seeking option still
+commits on key-down and keeps the HUD hidden.
 
-- **With the HUD hidden, a LEFT/RIGHT press is spent raising it and moves nothing.** The HUD sits on
-  a 4.5 s timer over full-screen video, so *"where am I"* and *"take me back ten seconds"* are two
-  different intentions the remote cannot distinguish; acting on a band nobody can see is how a
-  viewer glancing at the clock loses their place. **A hold is not affected** — holding LEFT raises
-  the HUD and then runs the ordinary continuous scrub as the auto-repeats arrive, by which point the
-  band being dragged is on screen.
-- **With the HUD up and the scrubber focused, one press moves the target by the Skip interval — 10 s unless Settings > Playback says otherwise.** The picture does
-  not move yet; the scrubber shows the target, and the state mark shows the direction.
-- **Holding engages a continuous scrub that accelerates** — 60× playback speed, doubling every second up to 480× — and
-  releasing the key leaves the target where the hold got to. A lost key-up is caught by a 400 ms watchdog (700 ms right after a key bounce, while the remote's
-  repeat delay restarts), so a dropped release cannot leave the scrub running; it ends the hold and seeks nothing.
-- **Nothing seeks until the viewer confirms.** Not the key release, not a pause after the last tap, not
-  the watchdog. A later tap or hold goes on from the target, not from the playhead, so "forward
-  thirty seconds" is three presses at the default 10 s step and, once OK is pressed, a single seek
-  rather than three — which matters beyond feel: back-to-back in-flight seeks are what stress the
-  demux pipeline.
+- **With the HUD hidden, a short LEFT/RIGHT tap now also seeks.** Raising the transport on
+  key-down still arms the existing hold; releasing without a hardware repeat commits the tap.
+- **With the HUD up and the scrubber focused, a short tap seeks automatically.** The fixed
+  +30/−10 second tap distances are independent of the configured Skip interval. LEFT/RIGHT on
+  buttons, tabs and chapter cards still navigate those controls.
+- **Holding retains the existing continuous scrub and confirmation behavior.** The initial
+  preview hop still uses the configured Skip interval; the continuous ramp accelerates from
+  60× playback speed, doubling every second up to 480×. Releasing a travelled hold leaves the
+  target pending for OK. The existing bounce debounce and lost-key-up watchdog are unchanged.
+- **A held scrub seeks only when confirmed.** Releasing the hold or losing its key-up does not
+  seek. A later hold continues from the pending target; a short tap starts an immediate relative
+  jump from the current playback position instead.
 - **The film keeps playing underneath** while a target is pending, and the HUD stays up for as long
   as it is (the 4.5 s linger never takes it away, and never commits it).
 - **OK, Play or Play-Pause confirms the target** — one seek to it, and the film plays on from there (a

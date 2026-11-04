@@ -65,10 +65,10 @@ pub fn hud_visible(ps: &plx_media::route::PlaybackSession, now: u32, until: u32,
 /// keydown(0x001)+keyup(0x000). A default D-pad press moves the fixed-step target; 0x101 repeats
 /// engage the continuous scrub. A held key's keyup is provisional — the driver can bounce `Up`
 /// then `Down` mid-hold — so the hold ends only after `SCRUB_RELEASE_DEBOUNCE_MS` passes without
-/// the same key returning (`appkit::held_key::HeldKey`). **Neither a hold's end nor a D-pad tap's keyup
-/// seeks:** the keys only move the TARGET, which stays pending (the film plays on underneath)
-/// until OK / PLAY takes it or BACK drops it — click-to-confirm. Only a pointer drag commits by
-/// itself, on its release. Dedicated FF/REW taps are handled by `seek_jump` before this release path.
+/// the same key returning (`appkit::held_key::HeldKey`). A hold's end leaves its target pending
+/// until OK / PLAY takes it or BACK drops it. Short D-pad taps are committed separately by the
+/// screen's tap discriminator (+30s / −10s); they do not leave a target waiting for confirmation.
+/// Pointer drags also commit on release. Dedicated FF/REW taps retain their configured interval.
 pub struct Scrub {
     /// The key-hold half — direction, the engaged ramp, the bounce debounce and the lost-keyup net —
     /// owned once in `appkit::held_key`, which the trailer transport's hold-to-scrub shares.

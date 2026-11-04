@@ -1,16 +1,16 @@
-name: Exit confirmation IPK
+name: Video skip IPK
 
-# Test the final BACK exit confirmation on its own branch using the standard ARM/package gates.
+# Test asymmetric short video skips on its own branch using the standard ARM/package gates.
 # This produces an installable Nightly artifact without publishing a release.
 on:
   push:
-    branches: [feat-exit-confirmation]
+    branches: [feat-asymmetric-video-skip]
 
 permissions:
   contents: read
 
 concurrency:
-  group: exit-confirmation-${{ github.ref }}
+  group: video-skip-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       flavor: nightly
       nightly-date: ${{ needs.date.outputs.value }}
       telemetry: development
-      artifact: exit-confirmation-ipk
+      artifact: video-skip-ipk
       source-asset: true
       fwcompat: true
       homebrew-manifest: true

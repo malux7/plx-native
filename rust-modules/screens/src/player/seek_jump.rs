@@ -1,4 +1,4 @@
-//! Immediate FF/REW taps and optional hidden-HUD D-pad jumps, sharing one seek path.
+//! Immediate asymmetric D-pad taps and FF/REW taps, sharing one accumulated seek path.
 use super::*;
 use plx_plex::plex::session::InstantDpadSeeking;
 
@@ -25,12 +25,22 @@ impl PlayerScreen {
         self.seek_burst.reset();
     }
 
-    /// Another key has interrupted an FF/REW tap that has not been released: its armed scrub goes
+    /// Another key has interrupted a direction/FF/REW tap that has not been released: its armed scrub goes
     /// with it, uncommitted.
     pub(super) fn drop_transport_tap(&mut self) {
         if self.transport_tap {
             self.transport_tap = false;
             self.scrub.cancel();
+        }
+    }
+
+    /// Short D-pad presses have fixed, asymmetric distances; held scrubbing keeps its tuning.
+    pub(super) fn commit_dpad_jump<H: AppLike>(&mut self, ps: &plx_media::route::PlaybackSession,
+        forward: bool, now: u32, fx: &mut Effects<'_, H>) {
+        let step = if forward { 30_000_000_000 } else { -10_000_000_000 };
+        let keep_hud = self.hud.visible_at_press;
+        if let Some(target) = self.jump_by(ps, step, keep_hud, now) {
+            Self::ask(fx, PlayerReq::CommitSeek(target));
         }
     }
 
@@ -118,10 +128,9 @@ impl PlayerScreen {
         }
         if edge == Edge::Down { self.drop_transport_tap(); }
         if plx_media::route::instant_dpad_seeking() != InstantDpadSeeking::On || self.hud.visible_at_press {
-            self.seek_burst.reset();
             return false;
         }
-        if edge == Edge::Down { self.commit_jump(ps, forward, now, fx); }
+        if edge == Edge::Down { self.commit_dpad_jump(ps, forward, now, fx); }
         // The opt-in D-pad path is one immediate jump per fresh press, without a held scrub.
         true
     }
@@ -218,6 +227,47 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn dpad_short_taps_commit_asymmetric_accumulated_targets_without_ok() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        plx_media::route::restore_instant_dpad_seeking(InstantDpadSeeking::Off);
+        for visible in [false, true] {
+            let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+            page.hud.visible_at_press = visible;
+            for (sym, at, target) in [
+                (consts::SDLK_RIGHT, 1_000, 70_000_000_000),
+                (consts::SDLK_RIGHT, 1_200, 97_000_000_000),
+                (consts::SDLK_LEFT, 1_400, 87_000_000_000),
+            ] {
+                assert!(key(&mut page, sym, Edge::Down, at).is_empty());
+                assert_eq!(key(&mut page, sym, Edge::Up, at + 40),
+                    vec![PlayerReq::CommitSeek(target)]);
+                assert!(!page.scrub.is_live());
+            }
+        }
+    }
+
+    #[test]
+    fn dpad_hold_keeps_the_existing_preview_and_confirmation_path() {
+        let _g = plx_base::testlock::serial();
+        let _playback = PlaybackFixture::new();
+        plx_media::route::restore_instant_dpad_seeking(InstantDpadSeeking::Off);
+        let _interval = player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
+        for sym in [consts::SDLK_RIGHT, consts::SDLK_LEFT] {
+            let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+            page.hud.visible_at_press = true;
+            assert!(key(&mut page, sym, Edge::Down, 1_000).is_empty());
+            let target = page.scrub.ns;
+            assert_eq!(target, if sym == consts::SDLK_RIGHT { 50_000_000_000 } else { 30_000_000_000 });
+            assert!(key(&mut page, sym, Edge::Repeat, 1_500).is_empty());
+            assert!(page.scrub.key.engaged);
+            assert!(key(&mut page, sym, Edge::Up, 1_600).is_empty());
+            assert_eq!(key(&mut page, consts::SDLK_RETURN, Edge::Down, 1_700),
+                vec![PlayerReq::SeekTo(target)]);
+        }
     }
 
     #[test]
@@ -320,12 +370,12 @@ mod tests {
             player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
         page.hud.dismissed = true;
-        // A +10s request lands on the preceding keyframe at 40s again. A second tap must
+        // A +30s request lands on the preceding keyframe at 40s again. A second tap must
         // advance the REQUESTED position, even after the player reports Playing at that frame.
         for (sym, at, target) in [
-            (consts::SDLK_RIGHT, 1_000, 50_000_000_000),
-            (consts::SDLK_RIGHT, 1_300, 60_000_000_000),
-            (consts::SDLK_LEFT, 1_600, 50_000_000_000),
+            (consts::SDLK_RIGHT, 1_000, 70_000_000_000),
+            (consts::SDLK_RIGHT, 1_300, 97_000_000_000),
+            (consts::SDLK_LEFT, 1_600, 87_000_000_000),
         ] {
             assert_eq!(
                 key(&mut page, sym, Edge::Down, at),
@@ -351,29 +401,29 @@ mod tests {
         let right = consts::SDLK_RIGHT;
         assert_eq!(
             key(&mut page, right, Edge::Down, 1_000),
-            vec![PlayerReq::CommitSeek(50_000_000_000)]
+            vec![PlayerReq::CommitSeek(70_000_000_000)]
         );
         plx_media::player::SHARED
             .playpos_ns
             .store(43_000_000_000, Relaxed);
         assert_eq!(
             key(&mut page, right, Edge::Down, 2_501),
-            vec![PlayerReq::CommitSeek(53_000_000_000)]
+            vec![PlayerReq::CommitSeek(73_000_000_000)]
         );
         key(&mut page, consts::SDLK_UP, Edge::Down, 2_550);
         // UP raises or moves the HUD; simulate dismissing it again without moving the playhead.
         page.hud.visible_at_press = false;
         assert_eq!(
             key(&mut page, right, Edge::Down, 2_600),
-            vec![PlayerReq::CommitSeek(53_000_000_000)]
+            vec![PlayerReq::CommitSeek(73_000_000_000)]
         );
         page.hud.visible_at_press = true;
-        key(&mut page, right, Edge::Down, 2_650);
+        key(&mut page, consts::SDLK_DOWN, Edge::Down, 2_650);
         page.scrub.cancel();
         page.hud.visible_at_press = false;
         assert_eq!(
             key(&mut page, right, Edge::Down, 2_700),
-            vec![PlayerReq::CommitSeek(53_000_000_000)]
+            vec![PlayerReq::CommitSeek(73_000_000_000)]
         );
     }
 
@@ -386,17 +436,17 @@ mod tests {
         let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
         assert_eq!(
             key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_000),
-            vec![PlayerReq::CommitSeek(50_000_000_000)]
+            vec![PlayerReq::CommitSeek(70_000_000_000)]
         );
         page.transport_reset(true);
         assert_eq!(
             key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_100),
-            vec![PlayerReq::CommitSeek(60_000_000_000)]
+            vec![PlayerReq::CommitSeek(97_000_000_000)]
         );
         page.transport_reset(false);
         assert_eq!(
             key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_200),
-            vec![PlayerReq::CommitSeek(50_000_000_000)]
+            vec![PlayerReq::CommitSeek(70_000_000_000)]
         );
     }
 
@@ -407,7 +457,7 @@ mod tests {
         let _interval =
             player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds10);
         for (sym, target) in [
-            (consts::SDLK_RIGHT, 50_000_000_000),
+            (consts::SDLK_RIGHT, 70_000_000_000),
             (consts::SDLK_LEFT, 30_000_000_000),
         ] {
             let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
@@ -427,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn seek_jump_visible_seek_still_waits_for_confirmation() {
+    fn seek_jump_visible_short_tap_commits_without_confirmation() {
         let _g = plx_base::testlock::serial();
         let _playback = PlaybackFixture::new();
         let _interval =
@@ -436,11 +486,9 @@ mod tests {
         page.hud.visible_at_press = true;
         assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Down, 1_000).is_empty());
         assert_eq!(page.scrub.ns, 50_000_000_000);
-        assert!(key(&mut page, consts::SDLK_RIGHT, Edge::Up, 1_020).is_empty());
-        assert_eq!(
-            key(&mut page, consts::SDLK_RETURN, Edge::Down, 1_040),
-            vec![PlayerReq::SeekTo(50_000_000_000)]
-        );
+        assert_eq!(key(&mut page, consts::SDLK_RIGHT, Edge::Up, 1_020),
+            vec![PlayerReq::CommitSeek(70_000_000_000)]);
+        assert!(!page.scrub.is_live());
     }
 
     #[test]
@@ -487,6 +535,8 @@ mod tests {
             player_hud::SkipIntervalGuard::set(plx_media::route::SkipInterval::Seconds60);
         for (sym, target) in [(consts::SDLK_RIGHT, 97_000_000_000), (consts::SDLK_LEFT, 0)] {
             let mut page = PlayerScreen::new(EntryId(9), plx_appkit::player_hud::loaded::classic_for_test());
+            plx_media::player::SHARED.playpos_ns.store(
+                if sym == consts::SDLK_RIGHT { 95_000_000_000 } else { 5_000_000_000 }, Relaxed);
             assert_eq!(
                 key(&mut page, sym, Edge::Down, 1_000),
                 vec![PlayerReq::CommitSeek(target)]
